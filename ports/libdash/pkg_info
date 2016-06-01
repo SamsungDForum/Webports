@@ -1,0 +1,6 @@
+NAME=libdash
+VERSION=50e466f77fe5f1dc0f3b6ef0ea7de79ed131fcb2
+URL=https://github.com/bitmovin/libdash/archive/50e466f77fe5f1dc0f3b6ef0ea7de79ed131fcb2.zip
+LICENSE=LGPL
+DEPENDS=(glibc-compat openssl zlib curl libxml2)
+SHA1=09be3ada148cd5de58cde52796b6f533c65e9b50
