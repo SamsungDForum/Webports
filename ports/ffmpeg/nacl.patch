@@ -1,7 +1,33 @@
-diff --git a/ffmpeg.c b/ffmpeg.c
---- a/ffmpeg.c
-+++ b/ffmpeg.c
-@@ -3360,7 +3360,7 @@ static int transcode(void)
+﻿diff --git ffmpeg-2.1.3-nacl/configure ffmpeg-2.1.3-nacl/configure
+--- ffmpeg-2.1.3-nacl/configure
++++ ffmpeg-2.1.3-nacl/configure
+@@ -4318,7 +4318,7 @@ enabled libv4l2           && require_pkg_config libv4l2 libv4l2.h v4l2_ioctl
+ enabled libvidstab        && require_pkg_config vidstab vid.stab/libvidstab.h vsMotionDetectInit
+ enabled libvo_aacenc      && require libvo_aacenc vo-aacenc/voAAC.h voGetAACEncAPI -lvo-aacenc
+ enabled libvo_amrwbenc    && require libvo_amrwbenc vo-amrwbenc/enc_if.h E_IF_init -lvo-amrwbenc
+-enabled libvorbis         && require libvorbis vorbis/vorbisenc.h vorbis_info_init -lvorbisenc -lvorbis -logg
++enabled libvorbis         && require libvorbis vorbis/vorbisenc.h vorbis_info_init -lvorbisenc -lvorbis -logg -lm
+ enabled libvpx            && {
+     enabled libvpx_vp8_decoder && { check_lib2 "vpx/vpx_decoder.h vpx/vp8dx.h" vpx_codec_dec_init_ver -lvpx ||
+                                     die "ERROR: libvpx decoder version must be >=0.9.1"; }
+diff --git ffmpeg-2.1.3-nacl/ffmpeg.c ffmpeg-2.1.3-nacl/ffmpeg.c
+--- ffmpeg-2.1.3-nacl/ffmpeg.c
++++ ffmpeg-2.1.3-nacl/ffmpeg.c
+@@ -351,11 +351,13 @@ void term_init(void)
+ #endif
+     avformat_network_deinit();
+ 
++#ifdef __GLIBC__
+     signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).    */
+     signal(SIGTERM, sigterm_handler); /* Termination (ANSI).  */
+ #ifdef SIGXCPU
+     signal(SIGXCPU, sigterm_handler);
+ #endif
++#endif /* __GLIBC__ */
+ }
+ 
+ /* read a key without blocking */
+@@ -3360,7 +3362,7 @@ static int transcode(void)
  
  static int64_t getutime(void)
  {
@@ -10,7 +36,7 @@ diff --git a/ffmpeg.c b/ffmpeg.c
      struct rusage rusage;
  
      getrusage(RUSAGE_SELF, &rusage);
-@@ -3378,7 +3378,7 @@ static int64_t getutime(void)
+@@ -3378,7 +3380,7 @@ static int64_t getutime(void)
  
  static int64_t getmaxrss(void)
  {
@@ -19,3 +45,603 @@ diff --git a/ffmpeg.c b/ffmpeg.c
      struct rusage rusage;
      getrusage(RUSAGE_SELF, &rusage);
      return (int64_t)rusage.ru_maxrss * 1024;
+diff --git ffmpeg-2.1.3-nacl/ffmpeg_opt.c ffmpeg-2.1.3-nacl/ffmpeg_opt.c
+--- ffmpeg-2.1.3-nacl/ffmpeg_opt.c
++++ ffmpeg-2.1.3-nacl/ffmpeg_opt.c
+@@ -662,7 +662,9 @@ static void assert_file_overwrite(const char *filename)
+                 fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
+                 fflush(stderr);
+                 term_exit();
++#ifdef __GLIBC__
+                 signal(SIGINT, SIG_DFL);
++#endif /* __GLIBC__ */
+                 if (!read_yesno()) {
+                     av_log(NULL, AV_LOG_FATAL, "Not overwriting - exiting\n");
+                     exit_program(1);
+diff --git ffmpeg-2.1.3-nacl/libavcodec/avcodec.h ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
+--- ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
++++ ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
+@@ -1013,6 +1013,8 @@ enum AVPacketSideDataType {
+      * follow the timestamp specifier of a WebVTT cue.
+      */
+     AV_PKT_DATA_WEBVTT_SETTINGS,
++
++    AV_PKT_DATA_ENCRYPT_INFO
+ };
+ 
+ /**
+@@ -1113,6 +1115,19 @@ typedef struct AVPacket {
+ #define AV_PKT_FLAG_KEY     0x0001 ///< The packet contains a keyframe
+ #define AV_PKT_FLAG_CORRUPT 0x0002 ///< The packet content is corrupted
+ 
++typedef struct AVEncBytes {
++    uint32_t bytes_of_clear_data;
++    uint32_t bytes_of_enc_data;
++} AVEncBytes;
++
++typedef struct AVEncInfo {
++    uint8_t iv_size;
++    uint8_t iv[16];
++    uint8_t kid[16];
++    uint8_t subsample_count;
++    AVEncBytes subsamples[4];
++} AVEncInfo;
++
+ enum AVSideDataParamChangeFlags {
+     AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT  = 0x0001,
+     AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT = 0x0002,
+diff --git ffmpeg-2.1.3-nacl/libavformat/avformat.h ffmpeg-2.1.3-nacl/libavformat/avformat.h
+--- ffmpeg-2.1.3-nacl/libavformat/avformat.h
++++ ffmpeg-2.1.3-nacl/libavformat/avformat.h
+@@ -948,6 +948,12 @@ enum AVDurationEstimationMethod {
+     AVFMT_DURATION_FROM_BITRATE ///< Duration estimated from bitrate (less accurate)
+ };
+ 
++typedef struct AVProtectionSystemSpecificData {
++    uint8_t system_id[16];
++    uint8_t* pssh_box;      ///< Raw pssh box data, including box size and tag
++    uint32_t pssh_box_size; ///< Raw pssh box data size
++} AVProtectionSystemSpecificData;
++
+ /**
+  * Format I/O context.
+  * New fields can be added to the end with minor version bumps.
+@@ -1339,6 +1345,13 @@ typedef struct AVFormatContext {
+      * Demuxing: Set by user via av_format_set_subtitle_codec (NO direct access).
+      */
+     AVCodec *subtitle_codec;
++
++    /**
++     * Each entry contains data extracted from the pssh box and may be
++     * identified by the AVProtectionSystemSpecificData::system_id.
++     */
++    AVProtectionSystemSpecificData* protection_system_data;
++    uint32_t protection_system_data_count;
+ } AVFormatContext;
+ 
+ int av_format_get_probe_score(const AVFormatContext *s);
+@@ -2231,7 +2244,6 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
+ 
+ int avformat_queue_attached_pictures(AVFormatContext *s);
+ 
+-
+ /**
+  * @}
+  */
+diff --git ffmpeg-2.1.3-nacl/libavformat/isom.h ffmpeg-2.1.3-nacl/libavformat/isom.h
+--- ffmpeg-2.1.3-nacl/libavformat/isom.h
++++ ffmpeg-2.1.3-nacl/libavformat/isom.h
+@@ -92,6 +92,26 @@ typedef struct MOVSbgp {
+     unsigned int index;
+ } MOVSbgp;
+ 
++struct AVEncInfo;
++
++typedef struct MOVAuxInfo {
++    unsigned char default_sample_info_size;
++    unsigned sample_count;
++    unsigned first_sample_number;
++    unsigned char* sample_info_sizes;
++    unsigned sample_info_total_size;
++    unsigned offsets_count;
++    uint64_t* offsets;
++} MOVAuxInfo;
++
++typedef struct MOVEncvInfo {
++    unsigned frma;
++    unsigned schm;
++    unsigned version;
++    unsigned char default_iv_size;
++    unsigned char default_kid[16];
++} MOVEncvInfo;
++
+ typedef struct MOVStreamContext {
+     AVIOContext *pb;
+     int pb_is_copied;
+@@ -142,6 +162,11 @@ typedef struct MOVStreamContext {
+     int start_pad;        ///< amount of samples to skip due to enc-dec delay
+     unsigned int rap_group_count;
+     MOVSbgp *rap_group;
++    MOVEncvInfo *encv_info;
++    MOVAuxInfo *aux_info;
++    unsigned int aux_info_count;
++    AVEncInfo *enc_info;
++    unsigned int enc_info_count;
+ } MOVStreamContext;
+ 
+ typedef struct MOVContext {
+diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov.c
+--- ffmpeg-2.1.3-nacl/libavformat/mov.c
++++ ffmpeg-2.1.3-nacl/libavformat/mov.c
+@@ -739,12 +739,80 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+     return 0;
+ }
+ 
++static int mov_cache_aux_info(MOVContext *c, AVStream *st, AVIOContext *pb)
++{
++    MOVStreamContext *sc = st->priv_data;
++    MOVEncvInfo *encv_info = sc->encv_info;
++    MOVAuxInfo *aux_info;
++    AVEncInfo *enc_info;
++    int64_t seek_ret, bytes_read = 0;
++    unsigned i, j;
++
++    if (!sc->aux_info)
++        return 0;
++
++    aux_info = &sc->aux_info[sc->aux_info_count - 1];
++
++    if (!av_dict_get(st->metadata, "encrypted", NULL, 0) ||
++        aux_info->sample_info_total_size == 0)
++          return 0;
++
++
++    av_reallocp_array(
++        &sc->enc_info, sc->enc_info_count + aux_info->sample_count,
++        sizeof(AVEncInfo));
++    memset(
++        &sc->enc_info[sc->enc_info_count], 0,
++        aux_info->sample_count * sizeof(AVEncInfo));
++
++    sc->enc_info_count += aux_info->sample_count;
++    // assumption: ctts_count is number of samples found by this moment
++    aux_info->first_sample_number = sc->ctts_count - aux_info->sample_count;
++
++    enc_info = &sc->enc_info[sc->enc_info_count - aux_info->sample_count];
++
++    for (i = 0; i < aux_info->sample_count; ++i) {
++        enc_info[i].iv_size = encv_info->default_iv_size;
++        memcpy(enc_info[i].kid, encv_info->default_kid, 16);
++        memset(enc_info[i].iv, 0, 16);
++        for (j = 0; j < encv_info->default_iv_size; ++j) {
++            enc_info[i].iv[j] = avio_r8(pb);
++        }
++        bytes_read += encv_info->default_iv_size;
++
++        if (!aux_info->sample_info_sizes)
++            continue;
++
++        if (aux_info->sample_info_sizes[i] > encv_info->default_iv_size) {
++            enc_info[i].subsample_count = avio_rb16(pb);
++            bytes_read += 2 + (2 + 4) * enc_info[i].subsample_count;
++            for (j = 0; j < enc_info[i].subsample_count; ++j) {
++                enc_info[i].subsamples[j].bytes_of_clear_data = avio_rb16(pb);
++                enc_info[i].subsamples[j].bytes_of_enc_data = avio_rb32(pb);
++            }
++        }
++    }
++
++    // return read bytes back...
++    seek_ret = avio_seek(pb, -bytes_read, SEEK_CUR);
++    if (seek_ret < 0) {
++        av_log(c->fc, AV_LOG_WARNING, "can't seek back error: %d str: %s\n",
++                (int) seek_ret, av_err2str(seek_ret));
++    }
++
++    return 0;
++}
++
+ /* this atom contains actual media data */
+ static int mov_read_mdat(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+ {
+     if (atom.size == 0) /* wrong one (MP4) */
+         return 0;
+     c->found_mdat=1;
++
++    if (c->fc->nb_streams >= 1)
++        mov_cache_aux_info(c, c->fc->streams[c->fc->nb_streams - 1], pb);
++
+     return 0; /* now go for moov */
+ }
+ 
+@@ -1581,6 +1649,7 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
+     int video_codec_id = ff_codec_get_id(ff_codec_movvideo_tags, format);
+ 
+     if (codec_tag &&
++         (codec_tag != AV_RL32("encv") && codec_tag != AV_RL32("enca")) &&
+          (codec_tag != format &&
+           (c->fc->video_codec_id ? video_codec_id != c->fc->video_codec_id
+                                  : codec_tag != MKTAG('j','p','e','g')))) {
+@@ -1601,6 +1670,76 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
+     return 0;
+ }
+ 
++static int mov_read_tenc(MOVStreamContext *sc, AVIOContext *pb, AVStream *st)
++{
++    int i = 0;
++    avio_rb32(pb); // size
++    avio_rl32(pb); // tenc
++    avio_rb32(pb); // reserved
++    avio_rb16(pb); // reserved
++    if (avio_r8(pb) > 0)
++        av_dict_set(&st->metadata, "encrypted", "yes", 0);
++
++    sc->encv_info->default_iv_size = avio_r8(pb);
++    for (i = 0; i < 16; ++i)
++        sc->encv_info->default_kid[i] = avio_r8(pb);
++
++    return 0;
++}
++
++static int mov_read_schm(MOVStreamContext *sc, AVIOContext *pb)
++{
++    avio_rb32(pb); // size
++    avio_rl32(pb); // schm
++    avio_rb32(pb); // reserved
++    sc->encv_info->schm = avio_rl32(pb);
++    sc->encv_info->version = avio_rb32(pb);
++
++    return 0;
++}
++
++static int mov_read_schi(MOVStreamContext *sc, AVIOContext *pb)
++{
++    avio_rb32(pb); // size
++    avio_rl32(pb); // schi
++
++    return 0;
++}
++
++static int mov_read_frma(MOVStreamContext *sc, AVIOContext *pb)
++{
++    avio_rb32(pb); // size
++    avio_rl32(pb); // frma
++    sc->encv_info->frma = avio_rl32(pb);
++
++    return 0;
++}
++
++static int mov_read_sinf(MOVContext *c, AVIOContext *pb, MOVAtom atom)
++{
++    AVStream *st;
++    MOVStreamContext *sc;
++    int ret = 0;
++    if (c->fc->nb_streams < 1)
++        return AVERROR_INVALIDDATA;
++    st = c->fc->streams[c->fc->nb_streams-1];
++    sc = st->priv_data;
++
++    sc->encv_info = (MOVEncvInfo*) av_malloc(sizeof(MOVEncvInfo));
++    if ((ret = mov_read_frma(sc, pb)) < 0)
++        goto fail;
++    if ((ret = mov_read_schm(sc, pb)) < 0)
++        goto fail;
++    if ((ret = mov_read_schi(sc, pb)) < 0)
++        goto fail;
++    if ((ret = mov_read_tenc(sc, pb, st)) < 0)
++        goto fail;
++
++    return 0;
++    fail: av_freep(&sc->encv_info);
++    return ret;
++}
++
+ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+ {
+     AVStream *st;
+@@ -1616,7 +1755,7 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+          pseudo_stream_id < entries && !pb->eof_reached;
+          pseudo_stream_id++) {
+         //Parsing Sample description table
+-        enum AVCodecID id;
++        enum AVCodecID id = AV_CODEC_ID_NONE;
+         int ret, dref_id = 1;
+         MOVAtom a = { AV_RL32("stsd") };
+         int64_t start_pos = avio_tell(pb);
+@@ -1638,12 +1777,16 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+ 
+         sc->pseudo_stream_id = st->codec->codec_tag ? -1 : pseudo_stream_id;
+         sc->dref_id= dref_id;
++        if (format == AV_RL32("encv"))
++            st->codec->codec_type = AVMEDIA_TYPE_VIDEO;
++        else if (format == AV_RL32("enva"))
++            st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
++        else
++            id = mov_codec_id(st, format);
+ 
+-        id = mov_codec_id(st, format);
+-
+-        av_dlog(c->fc, "size=%"PRId64" 4CC= %c%c%c%c codec_type=%d\n", size,
++        av_dlog(c->fc, "size=%"PRId64" 4CC= %c%c%c%c codec_type=%d pseudo_stream_id=%d\n", size,
+                 (format >> 0) & 0xff, (format >> 8) & 0xff, (format >> 16) & 0xff,
+-                (format >> 24) & 0xff, st->codec->codec_type);
++                (format >> 24) & 0xff, st->codec->codec_type, sc->pseudo_stream_id);
+ 
+         if (st->codec->codec_type==AVMEDIA_TYPE_VIDEO) {
+             st->codec->codec_id = id;
+@@ -1668,6 +1811,14 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+                 return ret;
+         } else if (a.size > 0)
+             avio_skip(pb, a.size);
++
++        a.type = AV_RL32("sinf");
++        a.size = size - (avio_tell(pb) - start_pos);
++        if (a.size > 8) {
++            if ((ret = mov_read_default(c, pb, a)) < 0)
++                return ret;
++        } else if (a.size > 0)
++            avio_skip(pb, a.size);
+     }
+ 
+     if (pb->eof_reached)
+@@ -2629,7 +2780,7 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+         return AVERROR_INVALIDDATA;
+     }
+     sc = st->priv_data;
+-    if (sc->pseudo_stream_id+1 != frag->stsd_id && sc->pseudo_stream_id != -1)
++    if (sc->pseudo_stream_id+1 != frag->stsd_id && sc->pseudo_stream_id != -1 && !av_dict_get(st->metadata, "encrypted", NULL, 0))
+         return 0;
+     avio_r8(pb); /* version */
+     flags = avio_rb24(pb);
+@@ -2703,6 +2854,8 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+ 
+     frag->moof_offset = offset;
+     st->duration = sc->track_end = dts + sc->time_offset;
++
++    av_dlog(c->fc, "AVIndex stream %d, offset %"PRIx64"\n", st->index, offset);
+     return 0;
+ }
+ 
+@@ -2904,6 +3057,133 @@ static int mov_read_uuid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+     return 0;
+ }
+ 
++static int mov_read_pssh(MOVContext *c, AVIOContext *pb, MOVAtom atom)
++{
++    int ret = 0;
++    const int32_t box_header_size = 8;
++    const int32_t fullbox_fields_size = 4;
++    uint32_t pssh_size = atom.size + box_header_size;
++    AVProtectionSystemSpecificData* protection_system_data = NULL;
++
++    av_reallocp_array(
++        &c->fc->protection_system_data,
++        c->fc->protection_system_data_count + 1,
++        sizeof(AVProtectionSystemSpecificData));
++
++    protection_system_data = &c->fc->protection_system_data[
++        c->fc->protection_system_data_count++];
++
++    protection_system_data->pssh_box = av_malloc(pssh_size);
++    protection_system_data->pssh_box_size = pssh_size;
++
++    // rewind to the beginning of the pssh box...
++    avio_seek(pb, -box_header_size, SEEK_CUR);
++
++    // ...and now slurp all of its contents!
++    ret = avio_read(pb, protection_system_data->pssh_box, pssh_size);
++    if (ret != pssh_size) {
++        av_log(c->fc, AV_LOG_ERROR,
++            "mov_read_pssh cannot read pssh. Returned = %d\n", ret);
++        return AVERROR_INVALIDDATA;
++    }
++
++    // system id is placed after box header and FullBox fields (version and flags)
++    memcpy(protection_system_data->system_id,
++        protection_system_data->pssh_box + box_header_size + fullbox_fields_size,
++        sizeof(protection_system_data->system_id));
++
++    av_dict_set(&c->fc->metadata, "enc_pssh_key", "yes", 0);
++    return 0;
++}
++
++static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
++{
++    AVStream *st;
++    MOVStreamContext *sc;
++    MOVAuxInfo *aux_info;
++    uint8_t default_sample_info_size;
++    uint32_t sample_count;
++
++    if (c->fc->nb_streams < 1)
++        return AVERROR_INVALIDDATA;
++    st = c->fc->streams[c->fc->nb_streams - 1];
++    sc = st->priv_data;
++
++    if (avio_rb32(pb) & 1)
++        avio_rb64(pb);
++
++    default_sample_info_size = avio_r8(pb);
++    sample_count = avio_rb32(pb);
++
++    av_reallocp_array(
++        &sc->aux_info, sc->aux_info_count + 1, sizeof(MOVAuxInfo));
++    memset(&sc->aux_info[sc->aux_info_count], 0, sizeof(MOVAuxInfo));
++
++    aux_info = &sc->aux_info[sc->aux_info_count++];
++
++    aux_info->first_sample_number = 0; // will be set in mov_cache_aux_info
++    aux_info->default_sample_info_size = default_sample_info_size;
++    aux_info->sample_count = sample_count;
++    aux_info->sample_info_total_size = 0;
++
++    av_log(c->fc, AV_LOG_DEBUG,
++            "AuxInfo: default_sample_info_size:%d sample_count:%d\n",
++            aux_info->default_sample_info_size, aux_info->sample_count);
++
++    if (aux_info->sample_info_sizes)
++        av_freep(&aux_info->sample_info_sizes);
++
++    if (aux_info->default_sample_info_size == 0) {
++        int i;
++        aux_info->sample_info_sizes = (unsigned char*) av_malloc(aux_info->sample_count);
++
++        for (i = 0; i < aux_info->sample_count; ++i) {
++            aux_info->sample_info_sizes[i] = avio_r8(pb);
++            aux_info->sample_info_total_size += aux_info->sample_info_sizes[i];
++        }
++    } else
++        aux_info->sample_info_total_size = aux_info->sample_count * aux_info->default_sample_info_size;
++
++    return 0;
++}
++
++static int mov_read_saio(MOVContext *c, AVIOContext *pb, MOVAtom atom)
++{
++    AVStream *st;
++    MOVStreamContext *sc;
++    MOVAuxInfo *aux_info;
++    unsigned version;
++    int i;
++
++    if (c->fc->nb_streams < 1)
++        return AVERROR_INVALIDDATA;
++
++    st = c->fc->streams[c->fc->nb_streams - 1];
++    sc = st->priv_data;
++
++    if (!sc->aux_info)
++        return AVERROR(ENOMEM);
++    // assumption: saio appears after saiz
++    aux_info = &sc->aux_info[sc->aux_info_count - 1];
++
++    version = avio_rb32(pb);
++    if (version & 1)
++        avio_rb64(pb);
++
++    aux_info->offsets_count = avio_rb32(pb);
++    if (aux_info->offsets)
++        av_freep(&aux_info->offsets);
++
++    aux_info->offsets = (uint64_t*) av_malloc(
++            aux_info->offsets_count * sizeof(uint64_t));
++    for (i = 0; i < aux_info->offsets_count; ++i)
++        if (version == 1)
++            aux_info->offsets[i] = avio_rb64(pb);
++        else
++            aux_info->offsets[i] = avio_rb32(pb);
++    return 0;
++}
++
+ static const MOVParseTableEntry mov_default_parse_table[] = {
+ { MKTAG('A','C','L','R'), mov_read_avid },
+ { MKTAG('A','P','R','G'), mov_read_avid },
+@@ -2937,6 +3217,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
+ { MKTAG('a','l','a','c'), mov_read_alac }, /* alac specific atom */
+ { MKTAG('a','v','c','C'), mov_read_glbl },
+ { MKTAG('p','a','s','p'), mov_read_pasp },
++{ MKTAG('p','s','s','h'), mov_read_pssh },
++{ MKTAG('s','a','i','z'), mov_read_saiz },
++{ MKTAG('s','a','i','o'), mov_read_saio },
++{ MKTAG('s','i','n','f'), mov_read_sinf },
+ { MKTAG('s','t','b','l'), mov_read_default },
+ { MKTAG('s','t','c','o'), mov_read_stco },
+ { MKTAG('s','t','p','s'), mov_read_stps },
+@@ -3276,6 +3560,20 @@ static int mov_read_close(AVFormatContext *s)
+         av_freep(&sc->stps_data);
+         av_freep(&sc->stsc_data);
+         av_freep(&sc->stts_data);
++        if (sc->encv_info)
++            av_freep(&sc->encv_info);
++        if (sc->aux_info) {
++            for (j = 0; j != sc->aux_info_count; ++j) {
++                if (sc->aux_info[j].default_sample_info_size == 0)
++                    av_freep(&sc->aux_info[j].sample_info_sizes);
++                if (sc->aux_info[j].offsets_count)
++                    av_freep(&sc->aux_info[j].offsets);
++            }
++            av_freep(&sc->aux_info);
++        }
++        if (sc->enc_info) {
++            av_freep(&sc->enc_info);
++        }
+     }
+ 
+     if (mov->dv_demux) {
+@@ -3444,6 +3742,7 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+     AVStream *st = NULL;
+     int ret;
+     mov->fc = s;
++
+  retry:
+     sample = mov_find_next_sample(s, &st);
+     if (!sample) {
+@@ -3473,7 +3772,9 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+                    sc->ffindex, sample->pos);
+             return AVERROR_INVALIDDATA;
+         }
++
+         ret = av_get_packet(sc->pb, pkt, sample->size);
++
+         if (ret < 0)
+             return ret;
+         if (sc->has_palette) {
+@@ -3522,8 +3823,26 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+         goto retry;
+     pkt->flags |= sample->flags & AVINDEX_KEYFRAME ? AV_PKT_FLAG_KEY : 0;
+     pkt->pos = sample->pos;
+-    av_dlog(s, "stream %d, pts %"PRId64", dts %"PRId64", pos 0x%"PRIx64", duration %d\n",
+-            pkt->stream_index, pkt->pts, pkt->dts, pkt->pos, pkt->duration);
++    if (sc->enc_info_count && sc->aux_info_count &&
++            sc->aux_info[0].first_sample_number <= sc->current_sample - 1) {
++        AVEncInfo* side_data;
++        unsigned offset =
++            sc->current_sample - 1 - sc->aux_info[0].first_sample_number;
++        if (offset >= sc->enc_info_count)
++            return AVERROR_INVALIDDATA;
++
++        side_data = (AVEncInfo*) av_packet_new_side_data(
++            pkt, AV_PKT_DATA_ENCRYPT_INFO, sizeof(AVEncInfo));
++        if (!side_data)
++            return AVERROR(ENOMEM);
++
++        memcpy(side_data, &sc->enc_info[offset], sizeof(AVEncInfo));
++
++        st->need_parsing = AVSTREAM_PARSE_NONE;
++        s->flags |= AVFMT_FLAG_KEEP_SIDE_DATA;
++    }
++    av_dlog(s, "stream %d, pts %"PRId64", dts %"PRId64", pos 0x%"PRIx64", duration %d, need parsing: %d\n",
++            pkt->stream_index, pkt->pts, pkt->dts, pkt->pos, pkt->duration, (int)st->need_parsing);
+     return 0;
+ }
+ 
+diff --git ffmpeg-2.1.3-nacl/libavformat/utils.c ffmpeg-2.1.3-nacl/libavformat/utils.c
+--- ffmpeg-2.1.3-nacl/libavformat/utils.c
++++ ffmpeg-2.1.3-nacl/libavformat/utils.c
+@@ -3328,6 +3328,12 @@ void avformat_close_input(AVFormatContext **ps)
+             s->iformat->read_close(s);
+     }
+ 
++    if (s->protection_system_data) {
++        int i;
++        for (i = 0; i != s->protection_system_data_count; ++i)
++            av_freep(&s->protection_system_data[i].pssh_box);
++        av_free(s->protection_system_data);
++    }
+     avformat_free_context(s);
+ 
+     *ps = NULL;
+diff --git ffmpeg-2.1.3-nacl/libavutil/mem.c ffmpeg-2.1.3-nacl/libavutil/mem.c
+--- ffmpeg-2.1.3-nacl/libavutil/mem.c
++++ ffmpeg-2.1.3-nacl/libavutil/mem.c
+@@ -57,6 +57,10 @@ void  free(void *ptr);
+ 
+ #endif /* MALLOC_PREFIX */
+ 
++#if  HAVE_POSIX_MEMALIGN
++extern int posix_memalign(void **ptr, size_t align, size_t size);
++#endif /* HAVE_POSIX_MEMALIGN */
++
+ #define ALIGN (HAVE_AVX ? 32 : 16)
+ 
+ /* NOTE: if you want to override these functions with your own
