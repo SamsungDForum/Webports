@@ -1,3 +1,18 @@
+diff --git a/lib/curl_setup.h b/lib/curl_setup.h
+--- a/lib/curl_setup.h
++++ b/lib/curl_setup.h
+@@ -683,4 +683,11 @@ int netware_init(void);
+ #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+ #endif
+
++#ifdef __native_client__
++// libnacl.a defines a symbol "getpwuid", which is already defined in libc.a,
++// what causes linker errors in some cases.
++// https://groups.google.com/forum/#!topic/native-client-discuss/YbxoVXVGzI8
++#undef HAVE_GETPWUID
++#endif
++
+ #endif /* HEADER_CURL_SETUP_H */
 diff --git a/lib/hostip4.c b/lib/hostip4.c
 --- a/lib/hostip4.c
 +++ b/lib/hostip4.c
