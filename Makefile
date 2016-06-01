@@ -12,6 +12,7 @@
 # at out/sentinels/*
 
 SDK_LIBS = zlib tiff jpeg8d libpng freetype lua5.2 libogg
+SDK_LIBS += bzip2 glibc-compat # libxml2 depedencies after enabling HTTP support
 SDK_LIBS += libtheora libvorbis libwebp libxml2 tinyxml openal-soft freealut
 
 PYLINT = build_tools/python_wrapper -m pylint
