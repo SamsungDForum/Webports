@@ -792,7 +792,7 @@ SetupCrossEnvironment() {
 
 GetRevision() {
   cd ${NACL_SRC}
-  FULL_REVISION=$(git describe)
+  FULL_REVISION=$(git rev-parse HEAD)
   REVISION=$(echo "${FULL_REVISION}" | cut  -f2 -d-)
   cd - > /dev/null
 }
