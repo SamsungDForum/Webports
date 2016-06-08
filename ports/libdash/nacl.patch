@@ -96,4 +96,43 @@ index 355a4f4..1ae4660 100644
 +if ($ENV{NACL_ARCH} STREQUAL "pnacl")
 +    target_link_libraries(libdash_networkpart_test nacl_io)
 +endif ()
--- 
+diff --git a/libdash/libdash/source/manager/DASHManager.cpp b/libdash/libdash/source/manager/DASHManager.cpp
+index 5181233..ef45594 100644
+--- a/libdash/libdash/source/manager/DASHManager.cpp
++++ b/libdash/libdash/source/manager/DASHManager.cpp
+@@ -25,6 +25,7 @@ DASHManager::~DASHManager           ()
+ }
+ IMPD*           DASHManager::Open   (char *path)
+ {
++    curl_global_init(CURL_GLOBAL_ALL);
+     DOMParser parser(path);
+
+     uint32_t fetchTime = Time::GetCurrentUTCTimeInSec();
+@@ -41,5 +42,6 @@ IMPD*           DASHManager::Open   (char *path)
+ }
+ void            DASHManager::Delete ()
+ {
++    curl_global_cleanup();
+     delete this;
+ }
+diff --git a/libdash/libdash/source/network/AbstractChunk.cpp b/libdash/libdash/source/network/AbstractChunk.cpp
+index 0c3ed79..dee8b42 100644
+--- a/libdash/libdash/source/network/AbstractChunk.cpp
++++ b/libdash/libdash/source/network/AbstractChunk.cpp
+@@ -40,8 +40,6 @@ bool    AbstractChunk::StartDownload                ()
+     if(this->stateManager.State() != NOT_STARTED)
+         return false;
+
+-    curl_global_init(CURL_GLOBAL_ALL);
+-
+     this->curl = curl_easy_init();
+     curl_easy_setopt(this->curl, CURLOPT_URL, this->AbsoluteURI().c_str());
+     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, CurlResponseCallback);
+@@ -150,7 +148,6 @@ void*   AbstractChunk::DownloadInternalConnection   (void *abstractchunk)
+     chunk->response = curl_easy_perform(chunk->curl);
+
+     curl_easy_cleanup(chunk->curl);
+-    curl_global_cleanup();
+
+     if(chunk->stateManager.State() == REQUEST_ABORT)
+         chunk->stateManager.State(ABORTED);
