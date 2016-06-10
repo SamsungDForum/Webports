@@ -28,27 +28,18 @@ ConfigureStep() {
   LogExecute ${SRC_DIR}/configure \
     --cross-prefix=${NACL_CROSS_PREFIX}- \
     --target-os=linux \
+    --disable-everything \
     --enable-gpl \
     --enable-static \
     --enable-cross-compile \
-    --disable-inline-asm \
-    --disable-ssse3 \
-    --disable-mmx \
-    --disable-amd3dnow \
-    --disable-amd3dnowext \
-    --disable-indevs \
-    --disable-protocols \
-    --disable-network \
-    --disable-programs \
-    --enable-protocol=file \
-    --enable-libmp3lame \
-    --enable-libvorbis \
-    --enable-libtheora \
-    --disable-ffplay \
-    --disable-ffserver \
-    --disable-demuxer=rtsp \
-    --disable-demuxer=image2 \
-    --disable-decoder=dpx \
+    --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
+    --enable-encoder=aac,mpeg4,libx264 \
+    --enable-protocol=concat,file \
+    --enable-demuxer=aac,avi,h264,image2,matroska,pcm_s16le,mov,m4v,rawvideo,wav \
+    --enable-muxer=h264,ipod,mov,mp4 \
+    --enable-parser=aac,h264,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
+    --enable-bsf=aac_adtstoasc \
+    --enable-filter=transpose \
     --prefix=${PREFIX} \
     ${extra_args}
 }
