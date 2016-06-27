@@ -136,3 +136,21 @@ index 0c3ed79..dee8b42 100644
 
      if(chunk->stateManager.State() == REQUEST_ABORT)
          chunk->stateManager.State(ABORTED);
+diff --git a/libdash/libdash/source/mpd/SegmentTemplate.cpp b/libdash/libdash/source/mpd/SegmentTemplate.cpp
+index b92c469..133ffbe 100644
+--- a/libdash/libdash/source/mpd/SegmentTemplate.cpp
++++ b/libdash/libdash/source/mpd/SegmentTemplate.cpp
+@@ -134,8 +134,11 @@ void                SegmentTemplate::FormatChunk                    (std::string
+     std::string formatTag = "%01d";
+
+     if ( (pos = uri.find("%0")) != std::string::npos)
+-        formatTag = uri.substr(pos).append("d");
+-
++    {
++        formatTag = uri.substr(pos);
++        if (uri.find("d") == std::string::npos)
++            formatTag.append("d");
++    }
+     sprintf(formattedNumber, formatTag.c_str(), number);
+     uri = formattedNumber;
+ }
