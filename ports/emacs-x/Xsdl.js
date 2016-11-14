@@ -17,15 +17,13 @@ NaClTerm.env = [
 // TODO(bradnelson): Do something more robust than racing emacs + xserver.
 function startEmacs() {
   var mgr = new NaClProcessManager();
+  // Assume a default terminal size for headless processes.
+  mgr.onTerminalResize(80, 24);
   var env = [
-    'EMACSLOADPATH=' +
-    '/naclports-dummydir/share/emacs/24.3/lisp' +
-    ':/naclports-dummydir/share/emacs/24.3/lisp/emacs-lisp',
-
     'DISPLAY=:42',
   ];
   mgr.spawn(
-      'emacs.nmf', ['-g', '162x53'], env,
+      'emacs.nmf', ['-g', '140x53'], env,
       '/home/user', 'nacl', null, function(pid) {
     mgr.waitpid(pid, 0, function() {
       window.close();

@@ -6,9 +6,7 @@ NACL_CONFIGURE_PATH=${SRC_DIR}/unix/configure
 
 NACLPORTS_CPPFLAGS="-Dmain=nacl_main"
 
-export LIBS+="\
-  -Wl,--undefined=nacl_main ${NACL_CLI_MAIN_LIB} \
-  -lppapi_simple -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
+export LIBS="${NACL_CLI_MAIN_LIB}"
 
 MAKE_TARGETS="binaries"
 INSTALL_TARGETS="install-binaries"
@@ -25,17 +23,17 @@ export tcl_cv_strtod_unbroken=ok
 # system influences things (needed for OSX).
 export tcl_cv_sys_version=Generic
 
-if [ "${NACL_LIBC}" = "glibc" ]; then
+if [ "${NACL_SHARED}" = "1" ]; then
   NACLPORTS_CFLAGS+=" -fPIC"
 fi
 
+EnableGlibcCompat
+
 if [ "${NACL_LIBC}" = "newlib" ]; then
-  NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
   NACLPORTS_CPPFLAGS+=" -DHAVE_STRLCPY=1"
   EXTRA_CONFIGURE_ARGS+=" --enable-shared=no"
   EXTRA_CONFIGURE_ARGS+=" --enable-load=no"
   export tcl_cv_strtoul_unbroken=ok
-  LIBS+=" -lglibc-compat"
 fi
 
 if [ "${NACL_LIBC}" = "bionic" ]; then

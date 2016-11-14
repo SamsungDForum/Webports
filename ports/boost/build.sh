@@ -4,19 +4,17 @@
 
 BUILD_DIR=${SRC_DIR}
 
-if [ "${NACL_LIBC}" = "newlib" ]; then
-  NACLPORTS_CPPFLAGS+=" -isystem ${NACLPORTS_INCLUDE}/glibc-compat"
-fi
+EnableGlibcCompat
 
-if [ "${NACL_ARCH}" = "pnacl" ]; then
+if [ "${TOOLCHAIN}" = "pnacl" -o "${TOOLCHAIN}" = "clang-newlib" ]; then
   # TODO(sbc): Should probably use clang here
   COMPILER=gcc
 else
   COMPILER=gcc
 fi
 
-if [ "${NACL_ARCH}" = "pnacl" ]; then
-  COMPILER_VERSION=3.4
+if [ "${TOOLCHAIN}" = "pnacl" -o "${TOOLCHAIN}" = "clang-newlib" ]; then
+  COMPILER_VERSION=3.6
 elif [ "${NACL_ARCH}" = "arm" ]; then
   COMPILER_VERSION=4.8
 else

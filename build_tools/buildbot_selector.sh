@@ -8,15 +8,23 @@
 
 # Main entry point for buildbots.
 # For local testing set BUILDBOT_BUILDERNAME and TEST_BUILDBOT, e.g:
-#  TEST_BUILDBOT=1 BUILDBOT_BUILDERNAME=linux-newlib-0 ./buildbot_selector.sh
+#  TEST_BUILDBOT=1 BUILDBOT_BUILDERNAME=linux-pnacl-0 ./buildbot_selector.sh
 
 set -o errexit
 set -o nounset
 
+# Use this variable to pin the naclports buildbots to a specific
+# SDK version.  This does not apply to the nightly builders, and
+# should be left unset unless there is ongoing issue with the lastest
+# SDK build.
+PINNED_SDK_VERSION=
+
 SCRIPT_DIR="$(cd $(dirname $0) && pwd)"
-DEFAULT_NACL_SDK_ROOT="$(dirname ${SCRIPT_DIR})/out/nacl_sdk"
+NACLPORTS_SRC=$(dirname ${SCRIPT_DIR})
+DEFAULT_NACL_SDK_ROOT="${NACLPORTS_SRC}/out/nacl_sdk"
 NACL_SDK_ROOT=${NACL_SDK_ROOT:-${DEFAULT_NACL_SDK_ROOT}}
 export NACL_SDK_ROOT
+
 
 BOT_GSUTIL='/b/build/scripts/slave/gsutil'
 if [ -e ${BOT_GSUTIL} ]; then
@@ -40,7 +48,7 @@ RESULT=0
 export PATH=${PATH}:/opt/local/bin
 
 if [ "${TEST_BUILDBOT:-}" = "1" -a -z "${BUILDBOT_BUILDERNAME:-}" ]; then
-  export BUILDBOT_BUILDERNAME=linux-newlib-0
+  export BUILDBOT_BUILDERNAME=linux-clang-0
 fi
 
 BuildShard() {
@@ -79,70 +87,59 @@ Publish() {
 BUILDBOT_BUILDERNAME=${BUILDBOT_BUILDERNAME#periodic-}
 PYTHON=${SCRIPT_DIR}/python_wrapper
 
-if [ "${BUILDBOT_BUILDERNAME}" = "linux-sdk" ]; then
-  readonly OS=linux
+# Decode buildername.
+readonly BNAME_REGEX="(nightly-|naclports-)?(.+)-(.+)-(.+)"
+if [[ ${BUILDBOT_BUILDERNAME} =~ ${BNAME_REGEX} ]]; then
+  readonly PREFIX=${BASH_REMATCH[1]}
+  if [ "${PREFIX}" = "naclports-" ]; then
+    readonly TRYBOT=1
+    readonly NIGHTLY=0
+  elif [ "${PREFIX}" = "nightly-" ]; then
+    readonly TRYBOT=0
+    readonly NIGHTLY=1
+  else
+    readonly TRYBOT=0
+    readonly NIGHTLY=0
+  fi
+  readonly OS=${BASH_REMATCH[2]}
+  readonly BOT_TYPE=${BASH_REMATCH[3]}
+  readonly SHARD=${BASH_REMATCH[4]}
 else
-  # Decode buildername.
-  readonly BNAME_REGEX="(nightly-|naclports-)?(.+)-(.+)-(.+)"
-  if [[ ${BUILDBOT_BUILDERNAME} =~ ${BNAME_REGEX} ]]; then
-    readonly PREFIX=${BASH_REMATCH[1]}
-    if [ "${PREFIX}" = "naclports-" ]; then
-      readonly TRYBOT=1
-      readonly NIGHTLY=0
-    elif [ "${PREFIX}" = "nightly-" ]; then
-      readonly TRYBOT=0
-      readonly NIGHTLY=1
-    else
-      readonly TRYBOT=0
-      readonly NIGHTLY=0
-    fi
-    readonly OS=${BASH_REMATCH[2]}
-    readonly BOT_TYPE=${BASH_REMATCH[3]}
-    readonly SHARD=${BASH_REMATCH[4]}
+  echo "Bad BUILDBOT_BUILDERNAME: ${BUILDBOT_BUILDERNAME}" 1>&2
+  exit 1
+fi
+
+# Don't upload periodic or trybot builds.
+if [ "${TRYBOT}" = "1" -o "${NIGHTLY}" = "1" ]; then
+  NACLPORTS_NO_UPLOAD=1
+fi
+
+# Select platform specific things.
+if [ "${OS}" = "win" ]; then
+  PYTHON=python.bat
+fi
+
+# Convert toolchain contains in the bot name to valid TOOLCHAIN value
+# as expected by the SDK tools.
+if [ "${BOT_TYPE}" = "clang" ]; then
+  TOOLCHAIN=clang-newlib
+else
+  TOOLCHAIN=${BOT_TYPE}
+fi
+
+# Select shard count
+if [ "${OS}" = "mac" ]; then
+  SHARDS=2
+elif [ "${OS}" = "linux" ]; then
+  if [ "${TOOLCHAIN}" = "bionic" ]; then
+    SHARDS=1
+  elif [ "${TOOLCHAIN}" = "emscripten" ]; then
+    SHARDS=1
   else
-    echo "Bad BUILDBOT_BUILDERNAME: ${BUILDBOT_BUILDERNAME}" 1>&2
-    exit 1
+    SHARDS=6
   fi
-
-  # Don't upload periodic or trybot builds.
-  if [ "${TRYBOT}" = "1" -o "${NIGHTLY}" = "1" ]; then
-    NACLPORTS_NO_UPLOAD=1
-  fi
-
-  # Select platform specific things.
-  if [ "${OS}" = "win" ]; then
-    PYTHON=python.bat
-  fi
-
-  # Convert toolchain contains in the bot name to valid TOOLCHAIN value
-  # as expected by the SDK tools.
-  # TODO(sbc): remove this first case once that bot names contain 'pnacl'
-  # rather than 'pancl_newlib'.
-  if [ "${BOT_TYPE}" = "pnacl_newlib" ]; then
-    TOOLCHAIN=pnacl
-  elif [ "${BOT_TYPE}" = "clang" ]; then
-    TOOLCHAIN=clang-newlib
-  else
-    TOOLCHAIN=${BOT_TYPE}
-  fi
-
-  # Select shard count
-  if [ "${OS}" = "mac" ]; then
-    SHARDS=2
-  elif [ "${OS}" = "linux" ]; then
-    if [ "${TOOLCHAIN}" = "bionic" ]; then
-      SHARDS=1
-    else
-      SHARDS=5
-    fi
-  else
-    echo "Unspecified sharding for OS: ${OS}" 1>&2
-  fi
-
-  # For the trybots we have 5 shards for each toolchain
-  if [ "${TRYBOT}" = "1" ]; then
-    SHARDS=5
-  fi
+else
+  echo "Unspecified sharding for OS: ${OS}" 1>&2
 fi
 
 # Optional Clobber (if checked in the buildbot ui).
@@ -156,11 +153,32 @@ if [ -z "${TEST_BUILDBOT:-}" -o ! -d ${NACL_SDK_ROOT} ]; then
   echo "@@@BUILD_STEP Install Latest SDK@@@"
   ARGS=""
   if [ ${TOOLCHAIN:-} = bionic ]; then
-    ARGS="--bionic"
+    ARGS+=" --bionic"
+  fi
+  if [ "${PINNED_SDK_VERSION:-}" != "" -a "${NIGHTLY}" != "1" ]; then
+    ARGS+=" -v ${PINNED_SDK_VERSION}"
   fi
   echo ${PYTHON} ${SCRIPT_DIR}/download_sdk.py ${ARGS}
   ${PYTHON} ${SCRIPT_DIR}/download_sdk.py ${ARGS}
 fi
+
+InstallEmscripten() {
+  echo "@@@BUILD_STEP Install Emscripten SDK@@@"
+  # Download the Emscripten SDK and set the environment variables
+  local DEFAULT_EMSCRIPTEN_ROOT="${NACLPORTS_SRC}/out/emsdk"
+  local EMSDK_ROOT=${EMSDK_ROOT:-${DEFAULT_EMSCRIPTEN_ROOT}}
+  local EMSCRIPTEN_ROOT=${EMSDK_ROOT}/emscripten
+  echo ${PYTHON} ${SCRIPT_DIR}/download_emscripten.py
+  ${PYTHON} ${SCRIPT_DIR}/download_emscripten.py
+
+  # Mechanism by which emscripten patches can be tested on the trybots
+  if [ -f "${NACLPORTS_SRC}/emscripten.patch" ]; then
+    cd ${EMSCRIPTEN_ROOT}
+    echo "Applying emscripten.patch"
+    git apply "${NACLPORTS_SRC}/emscripten.patch"
+    cd -
+  fi
+}
 
 Unittests() {
   echo "@@@BUILD_STEP naclports unittests@@@"
@@ -190,7 +208,12 @@ PlumbingTests() {
   fi
 }
 
+if [ -z "${TEST_BUILDBOT:-}" -a ${TOOLCHAIN:-} = emscripten ]; then
+  InstallEmscripten
+fi
+
 Unittests
+
 if [ -z "${TEST_BUILDBOT:-}" ]; then
   PlumbingTests
 fi
@@ -200,14 +223,6 @@ export PEPPER_VERSION=$(${NACL_SDK_ROOT}/tools/getos.py --sdk-version)
 export PEPPER_DIR=pepper_${PEPPER_VERSION}
 export NACLPORTS_ANNOTATE=1
 . ${SCRIPT_DIR}/buildbot_common.sh
-
-# The SDK builder builds a subset of the ports, but with multiple
-# configurations.
-if [ "${BUILDBOT_BUILDERNAME}" = "linux-sdk" ]; then
-  cd ${SCRIPT_DIR}
-  ./buildbot_sdk_bundle.sh
-  exit 0
-fi
 
 CleanCurrentToolchain
 BuildShard

@@ -1,4 +1,0 @@
-NAME=lua-ppapi
-VERSION=0.1
-LICENSE=BSD
-DEPENDS=(lua5.2 libtar nacl-spawn)

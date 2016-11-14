@@ -14,7 +14,6 @@
 SDK_LIBS = zlib tiff jpeg8d libpng freetype lua5.2 libogg
 SDK_LIBS += bzip2 glibc-compat # libxml2 depedencies after enabling HTTP support
 SDK_LIBS += libtheora libvorbis libwebp libxml2 tinyxml openal-soft freealut
-
 PYLINT = build_tools/python_wrapper -m pylint
 COVERAGE = bin/coverage
 COVERAGE_ARGS = --fail-under=60
@@ -51,15 +50,9 @@ endif
 
 export NACL_ARCH
 export TOOLCHAIN
-export NACL_GLIBC
 
 all:
 	bin/naclports --all install $(BUILD_FLAGS)
-
-sdklibs: $(SDK_LIBS)
-
-sdklibs_list:
-	@echo $(SDK_LIBS)
 
 run:
 	./build_tools/httpd.py

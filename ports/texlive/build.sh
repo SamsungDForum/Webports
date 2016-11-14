@@ -1,6 +1,8 @@
-# Copyright (c) 2013 The Native Client Authors. All rights reserved.
+# Copyright 2015 The Native Client Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+TLNET_URL=http://storage.googleapis.com/naclports/mirror/texlive-20150523
 
 SCHEME="small"
 
@@ -24,19 +26,42 @@ EXTRA_CONFIGURE_ARGS="--disable-native-texlive-build \
                       --with-banner-add=/NaCl \
                       --without-x"
 
-export EXTRA_LIBS="${NACL_CLI_MAIN_LIB} -ltar -lppapi_simple \
-  -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
+export EXTRA_LIBS="${NACL_CLI_MAIN_LIB}"
+
+EnableGlibcCompat
 
 if [ "${NACL_LIBC}" = "newlib" ]; then
   NACLPORTS_CFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
   NACLPORTS_CXXFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-  export LIBS="-lglibc-compat"
+  NACLPORTS_LIBS+=" -lm"
 fi
 
+BuildHostBinaries() {
+  local host_build=${WORK_DIR}/build_host
+  if [ ! -x ${host_build}/texk/web2c/tangleboot ]; then
+    Banner "Building texlive for host"
+    MakeDir ${host_build}
+    ChangeDir ${host_build}
+    LIBS="" EXTRA_LIBS="" LogExecute ${SRC_DIR}/configure \
+      --disable-all-pkgs --enable-web2c
+    LIBS="" EXTRA_LIBS="" LogExecute make -j${OS_JOBS}
+    cd -
+  fi
+  EXTRA_CONFIGURE_ARGS="${EXTRA_CONFIGURE_ARGS} \
+                        OTANGLE=${host_build}/texk/web2c/otangle \
+                        TIE=${host_build}/texk/web2c/tie \
+                        CTANGLE=${host_build}/texk/web2c/ctangle \
+                        CTANGLEBOOT=${host_build}/texk/web2c/ctangleboot \
+                        TANGLE=${host_build}/texk/web2c/tangle \
+                        TANGLEBOOT=${host_build}/texk/web2c/tangleboot"
+}
+
 ConfigureStep() {
-  # TODO(phosek): we should be able to run reautoconf at this point, but
-  # this requires automake > 1.12 which is not currently shipped in Ubuntu 12.04
-  #${SRC_DIR}/reautoconf
+  # We need to build a host version of TeX Live for tangle, ctangle, otangle,
+  # and tie which are used during the NaCl build.
+  # TODO(phosek): a better solution would be to distribute pexe's for these
+  # tools which would be translated for the host and ran using sel_ldr
+  BuildHostBinaries
 
   local build_host=$(${SRC_DIR}/build-aux/config.guess)
   EXTRA_CONFIGURE_ARGS="${EXTRA_CONFIGURE_ARGS} \
@@ -48,8 +73,9 @@ ConfigureStep() {
                         BUILDLIBS="
 
   # TODO(phosek): we need to hardcode the package path because kpathsea which
-  # is normally responsible for resolving paths requires fork/spawn and pipes
-  sed -i "s+\$PACKAGEDIR+/mnt/html5/packages/texlive.${NACL_ARCH}+g" \
+  # is normally responsible for resolving paths requires fork/spawn and pipes;
+  # once nacl_io has support for pipes, we could remove this bit
+  sed -i "s+\$PACKAGEDIR+/packages/texlive.${NACL_ARCH}+g" \
     ${SRC_DIR}/texk/kpathsea/texmf.cnf
 
   export ac_exeext=${NACL_EXEEXT}
@@ -62,16 +88,19 @@ BuildStep() {
 }
 
 InstallStep() {
+  INSTALL_TARGETS="install-strip texlinks"
+  DefaultInstallStep
+  Remove ${DESTDIR}${PREFIX}/bin/mktexfmt
+}
+
+PublishStep() {
   MakeDir ${PUBLISH_DIR}
   local ARCH_DIR=${PUBLISH_DIR}/${NACL_ARCH}
-
-  INSTALL_TARGETS="install-strip texlinks"
-  (DefaultInstallStep)
 
   ChangeDir ${PUBLISH_DIR}
   local INSTALL_TL="install-tl-unx.tar.gz"
   local INSTALL_TL_DIR=${ARCH_DIR}/install-tl
-  TryFetch "ftp://tug.org/texlive/tlnet/${INSTALL_TL}" ${INSTALL_TL}
+  TryFetch "${TLNET_URL}/${INSTALL_TL}" ${INSTALL_TL}
   MakeDir ${INSTALL_TL_DIR}
   tar -xf ${INSTALL_TL} --directory ${INSTALL_TL_DIR} --strip-components=1
   rm -rf ${INSTALL_TL}
@@ -80,7 +109,7 @@ InstallStep() {
     texdir=${ARCH_DIR} scheme=${SCHEME} > ${INSTALL_TL_DIR}/texlive.profile
 
   LogExecute ${INSTALL_TL_DIR}/install-tl \
-    --profile ${INSTALL_TL_DIR}/texlive.profile
+    -repository ${TLNET_URL} -profile ${INSTALL_TL_DIR}/texlive.profile
   rm -rf ${INSTALL_TL_DIR}
 
   if [ "${OS_NAME}" != "Darwin" ]; then
@@ -101,6 +130,10 @@ InstallStep() {
   done
   cp ${SRC_DIR}/texk/kpathsea/texmf.cnf texmf-dist/web2c/texmf.cnf
   ChangeDir ${ARCH_DIR}
+
+  # TODO(phosek): Undo all source tree changes except for those coming from
+  # nacl.patch, this step could be removed once we get kpathsea to work.
+  (cd ${SRC_DIR}; git reset --hard)
 
   # TODO(phosek): The code below could be potentially replaced by
   # PublishByArchForDevEnv, but there is a subtle difference in that we only
@@ -136,4 +169,8 @@ InstallStep() {
   ChangeDir ${ARCH_DIR}
   LogExecute rm -f ${ARCH_DIR}.zip
   LogExecute zip -r ${ARCH_DIR}.zip .
+
+  # Drop unzipped copy to reduce upload failures on the bots.
+  ChangeDir ${PUBLISH_DIR}
+  LogExecute rm -rf ${PUBLISH_DIR}/${ARCH_DIR}
 }

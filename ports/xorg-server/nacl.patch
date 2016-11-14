@@ -86,7 +86,7 @@ diff --git a/dix/main.c b/dix/main.c
  #ifdef XQUARTZ
  #include <pthread.h>
  
-@@ -130,11 +134,22 @@ int
+@@ -130,11 +134,24 @@ int
  dix_main(int argc, char *argv[], char *envp[])
  #else
  int
@@ -104,6 +104,8 @@ diff --git a/dix/main.c b/dix/main.c
 +    char **envp = environ;
 +    unsetenv("NACL_SPAWN_MODE");
 +    if (nacl_startup_untar(argv[0], "xorg-xkb.tar", "/"))
++      return 1;
++    if (nacl_startup_untar(argv[0], "xorg-fonts.tar", "/"))
 +      return 1;
 +#endif
  
@@ -197,24 +199,15 @@ diff --git a/include/servermd.h b/include/servermd.h
 diff --git a/os/access.c b/os/access.c
 --- a/os/access.c
 +++ b/os/access.c
-@@ -322,7 +322,7 @@ DefineSelf(int fd)
-     int family;
-     register HOST *host;
+@@ -113,7 +113,7 @@ SOFTWARE.
+ #endif
+ #endif
  
--#ifndef WIN32
-+#if !defined(WIN32) && !(defined(__native_client__) && defined(_NEWLIB_VERSION))
-     struct utsname name;
- #else
-     struct {
-@@ -353,7 +353,7 @@ DefineSelf(int fd)
-      * uname() lets me access to the whole string (it smashes release, you
-      * see), whereas gethostname() kindly truncates it for me.
-      */
--#ifndef WIN32
-+#if !defined(WIN32) && !(defined(__native_client__) && defined(_NEWLIB_VERSION))
-     uname(&name);
- #else
-     gethostname(name.nodename, sizeof(name.nodename));
+-#if defined(SVR4) ||  (defined(SYSV) && defined(__i386__)) || defined(__GNU__)
++#if !defined(SIOCGIFCONF) && !defined(WIN32)
+ #include <sys/utsname.h>
+ #endif
+ #if defined(SYSV) &&  defined(__i386__)
 diff --git a/os/utils.c b/os/utils.c
 --- a/os/utils.c
 +++ b/os/utils.c

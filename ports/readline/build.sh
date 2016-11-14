@@ -7,10 +7,7 @@ export bash_cv_wcwidth_broken=no
 
 MAKEFLAGS+=" EXEEXT=.${NACL_EXEEXT}"
 
-if [ "${NACL_LIBC}" = "newlib" ]; then
-   NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-   export LIBS="-lglibc-compat"
-fi
+EnableGlibcCompat
 
 if [ "${NACL_SHARED}" = "0" ]; then
    EXTRA_CONFIGURE_ARGS="--disable-shared"
@@ -25,11 +22,11 @@ TestStep() {
   MAKE_TARGETS=examples
   DefaultBuildStep
   pushd examples
-  # TODO(jvoung): PNaCl can't use WriteSelLdrScript --
-  # It should use TranslateAndWriteSelLdrScript instead.
+  # TODO(jvoung): PNaCl can't use WriteLauncherScript --
+  # It should use TranslateAndWriteLauncherScript instead.
   # It probably shouldn't use .nexe as the extension either.
   for NEXE in *.nexe; do
-    WriteSelLdrScript ${NEXE%.*} ${NEXE}
+    WriteLauncherScript ${NEXE%.*} ${NEXE}
   done
   popd
 }

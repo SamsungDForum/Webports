@@ -1,8 +1,41 @@
-﻿diff --git ffmpeg-2.1.3-nacl/configure ffmpeg-2.1.3-nacl/configure
---- ffmpeg-2.1.3-nacl/configure
-+++ ffmpeg-2.1.3-nacl/configure
-@@ -4318,7 +4318,7 @@ enabled libv4l2           && require_pkg_config libv4l2 libv4l2.h v4l2_ioctl
- enabled libvidstab        && require_pkg_config vidstab vid.stab/libvidstab.h vsMotionDetectInit
+From a2dbc0286150e86343ee79457f06e226ebac0532 Mon Sep 17 00:00:00 2001
+From: Jakub Luwierski <j.luwierski@samsung.com>
+Date: Mon, 14 Nov 2016 13:07:55 +0100
+Subject: [PATCH] NaCl-patch
+
+---
+ configure              |  10 +-
+ ffmpeg.c               |   6 +-
+ ffmpeg_opt.c           |   2 +
+ libavcodec/avcodec.h   |  15 +++
+ libavformat/avformat.h |  14 ++-
+ libavformat/isom.h     |  26 ++++
+ libavformat/mov.c      | 335 +++++++++++++++++++++++++++++++++++++++++++++++--
+ libavformat/utils.c    |   6 +
+ libavutil/mem.c        |   4 +
+ 9 files changed, 405 insertions(+), 13 deletions(-)
+
+diff --git a/configure b/configure
+index e4c1c24..ef3d85a 100755
+--- a/configure
++++ b/configure
+@@ -4761,7 +4761,13 @@ if ! disabled network; then
+ fi
+
+ check_builtin atomic_cas_ptr atomic.h "void **ptr; void *oldval, *newval; atomic_cas_ptr(ptr, oldval, newval)"
+-check_builtin atomic_compare_exchange "" "int *ptr, *oldval; int newval; __atomic_compare_exchange_n(ptr, oldval, newval, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)"
++# Check for both __atomic_compare_exchange_n and __atomic_add_fetch since
++# HAVE_ATOMIC_COMPARE_EXCHANGE should only be defined if both are present.
++# Currently PNaCl supports __atomic_compare_exchange_n but not
++# __atomic_add_fetch so testing for __atomic_compare_exchange_n was not
++# enough.
++# https://code.google.com/p/nativeclient/issues/detail?id=3941
++check_builtin atomic_compare_exchange "" "int *ptr, *oldval; int newval; __atomic_compare_exchange_n(ptr, oldval, newval, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); __atomic_add_fetch(ptr, 1, __ATOMIC_SEQ_CST)"
+ check_builtin machine_rw_barrier mbarrier.h "__machine_rw_barrier()"
+ check_builtin MemoryBarrier windows.h "MemoryBarrier()"
+ check_builtin sarestart signal.h "SA_RESTART"
+@@ -4964,7 +4970,7 @@ enabled libv4l2           && require_pkg_config libv4l2 libv4l2.h v4l2_ioctl
+ enabled libvidstab        && require_pkg_config "vidstab >= 0.98" vid.stab/libvidstab.h vsMotionDetectInit
  enabled libvo_aacenc      && require libvo_aacenc vo-aacenc/voAAC.h voGetAACEncAPI -lvo-aacenc
  enabled libvo_amrwbenc    && require libvo_amrwbenc vo-amrwbenc/enc_if.h E_IF_init -lvo-amrwbenc
 -enabled libvorbis         && require libvorbis vorbis/vorbisenc.h vorbis_info_init -lvorbisenc -lvorbis -logg
@@ -10,13 +43,14 @@
  enabled libvpx            && {
      enabled libvpx_vp8_decoder && { check_lib2 "vpx/vpx_decoder.h vpx/vp8dx.h" vpx_codec_dec_init_ver -lvpx ||
                                      die "ERROR: libvpx decoder version must be >=0.9.1"; }
-diff --git ffmpeg-2.1.3-nacl/ffmpeg.c ffmpeg-2.1.3-nacl/ffmpeg.c
---- ffmpeg-2.1.3-nacl/ffmpeg.c
-+++ ffmpeg-2.1.3-nacl/ffmpeg.c
-@@ -351,11 +351,13 @@ void term_init(void)
+diff --git a/ffmpeg.c b/ffmpeg.c
+index 6604ff0..231a141 100644
+--- a/ffmpeg.c
++++ b/ffmpeg.c
+@@ -353,11 +353,13 @@ void term_init(void)
  #endif
      avformat_network_deinit();
- 
+
 +#ifdef __GLIBC__
      signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).    */
      signal(SIGTERM, sigterm_handler); /* Termination (ANSI).  */
@@ -25,9 +59,9 @@ diff --git ffmpeg-2.1.3-nacl/ffmpeg.c ffmpeg-2.1.3-nacl/ffmpeg.c
  #endif
 +#endif /* __GLIBC__ */
  }
- 
+
  /* read a key without blocking */
-@@ -3360,7 +3362,7 @@ static int transcode(void)
+@@ -3937,7 +3939,7 @@ static int transcode(void)
  
  static int64_t getutime(void)
  {
@@ -36,7 +70,7 @@ diff --git ffmpeg-2.1.3-nacl/ffmpeg.c ffmpeg-2.1.3-nacl/ffmpeg.c
      struct rusage rusage;
  
      getrusage(RUSAGE_SELF, &rusage);
-@@ -3378,7 +3380,7 @@ static int64_t getutime(void)
+@@ -3955,7 +3957,7 @@ static int64_t getutime(void)
  
  static int64_t getmaxrss(void)
  {
@@ -45,10 +79,11 @@ diff --git ffmpeg-2.1.3-nacl/ffmpeg.c ffmpeg-2.1.3-nacl/ffmpeg.c
      struct rusage rusage;
      getrusage(RUSAGE_SELF, &rusage);
      return (int64_t)rusage.ru_maxrss * 1024;
-diff --git ffmpeg-2.1.3-nacl/ffmpeg_opt.c ffmpeg-2.1.3-nacl/ffmpeg_opt.c
---- ffmpeg-2.1.3-nacl/ffmpeg_opt.c
-+++ ffmpeg-2.1.3-nacl/ffmpeg_opt.c
-@@ -662,7 +662,9 @@ static void assert_file_overwrite(const char *filename)
+diff --git a/ffmpeg_opt.c b/ffmpeg_opt.c
+index 39c5f49..2575266 100644
+--- a/ffmpeg_opt.c
++++ b/ffmpeg_opt.c
+@@ -744,7 +744,9 @@ static void assert_file_overwrite(const char *filename)
                  fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
                  fflush(stderr);
                  term_exit();
@@ -58,19 +93,20 @@ diff --git ffmpeg-2.1.3-nacl/ffmpeg_opt.c ffmpeg-2.1.3-nacl/ffmpeg_opt.c
                  if (!read_yesno()) {
                      av_log(NULL, AV_LOG_FATAL, "Not overwriting - exiting\n");
                      exit_program(1);
-diff --git ffmpeg-2.1.3-nacl/libavcodec/avcodec.h ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
---- ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
-+++ ffmpeg-2.1.3-nacl/libavcodec/avcodec.h
-@@ -1013,6 +1013,8 @@ enum AVPacketSideDataType {
-      * follow the timestamp specifier of a WebVTT cue.
+diff --git a/libavcodec/avcodec.h b/libavcodec/avcodec.h
+index 575dae1..9fef8bd 100644
+--- a/libavcodec/avcodec.h
++++ b/libavcodec/avcodec.h
+@@ -1104,6 +1104,8 @@ enum AVPacketSideDataType {
+      * side data includes updated metadata which appeared in the stream.
       */
-     AV_PKT_DATA_WEBVTT_SETTINGS,
+     AV_PKT_DATA_METADATA_UPDATE,
 +
 +    AV_PKT_DATA_ENCRYPT_INFO
  };
  
- /**
-@@ -1113,6 +1115,19 @@ typedef struct AVPacket {
+ typedef struct AVPacketSideData {
+@@ -1206,6 +1208,19 @@ typedef struct AVPacket {
  #define AV_PKT_FLAG_KEY     0x0001 ///< The packet contains a keyframe
  #define AV_PKT_FLAG_CORRUPT 0x0002 ///< The packet content is corrupted
  
@@ -90,12 +126,13 @@ diff --git ffmpeg-2.1.3-nacl/libavcodec/avcodec.h ffmpeg-2.1.3-nacl/libavcodec/a
  enum AVSideDataParamChangeFlags {
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT  = 0x0001,
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT = 0x0002,
-diff --git ffmpeg-2.1.3-nacl/libavformat/avformat.h ffmpeg-2.1.3-nacl/libavformat/avformat.h
---- ffmpeg-2.1.3-nacl/libavformat/avformat.h
-+++ ffmpeg-2.1.3-nacl/libavformat/avformat.h
-@@ -948,6 +948,12 @@ enum AVDurationEstimationMethod {
-     AVFMT_DURATION_FROM_BITRATE ///< Duration estimated from bitrate (less accurate)
- };
+diff --git a/libavformat/avformat.h b/libavformat/avformat.h
+index 4211a95..f2f9e49 100644
+--- a/libavformat/avformat.h
++++ b/libavformat/avformat.h
+@@ -777,6 +777,12 @@ typedef struct AVIndexEntry {
+ #define AV_PTS_WRAP_ADD_OFFSET  1   ///< add the format specific offset on wrap detection
+ #define AV_PTS_WRAP_SUB_OFFSET  -1  ///< subtract the format specific offset on wrap detection
  
 +typedef struct AVProtectionSystemSpecificData {
 +    uint8_t system_id[16];
@@ -104,12 +141,12 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/avformat.h ffmpeg-2.1.3-nacl/libavforma
 +} AVProtectionSystemSpecificData;
 +
  /**
-  * Format I/O context.
+  * Stream structure.
   * New fields can be added to the end with minor version bumps.
-@@ -1339,6 +1345,13 @@ typedef struct AVFormatContext {
-      * Demuxing: Set by user via av_format_set_subtitle_codec (NO direct access).
+@@ -1723,6 +1729,13 @@ typedef struct AVFormatContext {
+      * Demuxing: Set by user.
       */
-     AVCodec *subtitle_codec;
+     enum AVCodecID data_codec_id;
 +
 +    /**
 +     * Each entry contains data extracted from the pssh box and may be
@@ -120,7 +157,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/avformat.h ffmpeg-2.1.3-nacl/libavforma
  } AVFormatContext;
  
  int av_format_get_probe_score(const AVFormatContext *s);
-@@ -2231,7 +2244,6 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
+@@ -2667,7 +2680,6 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
  
  int avformat_queue_attached_pictures(AVFormatContext *s);
  
@@ -128,12 +165,13 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/avformat.h ffmpeg-2.1.3-nacl/libavforma
  /**
   * @}
   */
-diff --git ffmpeg-2.1.3-nacl/libavformat/isom.h ffmpeg-2.1.3-nacl/libavformat/isom.h
---- ffmpeg-2.1.3-nacl/libavformat/isom.h
-+++ ffmpeg-2.1.3-nacl/libavformat/isom.h
-@@ -92,6 +92,26 @@ typedef struct MOVSbgp {
-     unsigned int index;
- } MOVSbgp;
+diff --git a/libavformat/isom.h b/libavformat/isom.h
+index d233839..cf9d2e4 100644
+--- a/libavformat/isom.h
++++ b/libavformat/isom.h
+@@ -112,6 +112,26 @@ typedef struct MOVFragmentIndex {
+     MOVFragmentIndexItem *items;
+ } MOVFragmentIndex;
  
 +struct AVEncInfo;
 +
@@ -158,10 +196,11 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/isom.h ffmpeg-2.1.3-nacl/libavformat/is
  typedef struct MOVStreamContext {
      AVIOContext *pb;
      int pb_is_copied;
-@@ -142,6 +162,11 @@ typedef struct MOVStreamContext {
-     int start_pad;        ///< amount of samples to skip due to enc-dec delay
-     unsigned int rap_group_count;
-     MOVSbgp *rap_group;
+@@ -167,6 +187,12 @@ typedef struct MOVStreamContext {
+     int64_t duration_for_fps;
+
+     int32_t *display_matrix;
++
 +    MOVEncvInfo *encv_info;
 +    MOVAuxInfo *aux_info;
 +    unsigned int aux_info_count;
@@ -170,10 +209,11 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/isom.h ffmpeg-2.1.3-nacl/libavformat/is
  } MOVStreamContext;
  
  typedef struct MOVContext {
-diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov.c
---- ffmpeg-2.1.3-nacl/libavformat/mov.c
-+++ ffmpeg-2.1.3-nacl/libavformat/mov.c
-@@ -739,12 +739,80 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+diff --git a/libavformat/mov.c b/libavformat/mov.c
+index de4004f..f225e09 100644
+--- a/libavformat/mov.c
++++ b/libavformat/mov.c
+@@ -762,12 +762,80 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      return 0;
  }
  
@@ -254,7 +294,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
      return 0; /* now go for moov */
  }
  
-@@ -1581,6 +1649,7 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
+@@ -1858,6 +1926,7 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
      int video_codec_id = ff_codec_get_id(ff_codec_movvideo_tags, format);
  
      if (codec_tag &&
@@ -262,7 +302,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
           (codec_tag != format &&
            (c->fc->video_codec_id ? video_codec_id != c->fc->video_codec_id
                                   : codec_tag != MKTAG('j','p','e','g')))) {
-@@ -1601,6 +1670,76 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
+@@ -1878,6 +1947,76 @@ static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
      return 0;
  }
  
@@ -339,7 +379,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
  int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
  {
      AVStream *st;
-@@ -1616,7 +1755,7 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+@@ -1893,7 +2032,7 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
           pseudo_stream_id < entries && !pb->eof_reached;
           pseudo_stream_id++) {
          //Parsing Sample description table
@@ -348,7 +388,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
          int ret, dref_id = 1;
          MOVAtom a = { AV_RL32("stsd") };
          int64_t start_pos = avio_tell(pb);
-@@ -1638,12 +1777,16 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+@@ -1915,12 +2054,16 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
  
          sc->pseudo_stream_id = st->codec->codec_tag ? -1 : pseudo_stream_id;
          sc->dref_id= dref_id;
@@ -369,7 +409,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
  
          if (st->codec->codec_type==AVMEDIA_TYPE_VIDEO) {
              st->codec->codec_id = id;
-@@ -1668,6 +1811,14 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
+@@ -1945,6 +2088,14 @@ int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries)
                  return ret;
          } else if (a.size > 0)
              avio_skip(pb, a.size);
@@ -384,7 +424,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
      }
  
      if (pb->eof_reached)
-@@ -2629,7 +2780,7 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -3133,7 +3284,7 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
          return AVERROR_INVALIDDATA;
      }
      sc = st->priv_data;
@@ -393,16 +433,16 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
          return 0;
      avio_r8(pb); /* version */
      flags = avio_rb24(pb);
-@@ -2703,6 +2854,8 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -3234,6 +3385,8 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
  
-     frag->moof_offset = offset;
+     frag->implicit_offset = offset;
      st->duration = sc->track_end = dts + sc->time_offset;
 +
 +    av_dlog(c->fc, "AVIndex stream %d, offset %"PRIx64"\n", st->index, offset);
      return 0;
  }
  
-@@ -2904,6 +3057,133 @@ static int mov_read_uuid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -3451,6 +3604,133 @@ static int mov_read_free(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      return 0;
  }
  
@@ -534,9 +574,9 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
 +}
 +
  static const MOVParseTableEntry mov_default_parse_table[] = {
- { MKTAG('A','C','L','R'), mov_read_avid },
+ { MKTAG('A','C','L','R'), mov_read_aclr },
  { MKTAG('A','P','R','G'), mov_read_avid },
-@@ -2937,6 +3217,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
+@@ -3486,6 +3766,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
  { MKTAG('a','l','a','c'), mov_read_alac }, /* alac specific atom */
  { MKTAG('a','v','c','C'), mov_read_glbl },
  { MKTAG('p','a','s','p'), mov_read_pasp },
@@ -547,10 +587,10 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
  { MKTAG('s','t','b','l'), mov_read_default },
  { MKTAG('s','t','c','o'), mov_read_stco },
  { MKTAG('s','t','p','s'), mov_read_stps },
-@@ -3276,6 +3560,20 @@ static int mov_read_close(AVFormatContext *s)
-         av_freep(&sc->stps_data);
-         av_freep(&sc->stsc_data);
-         av_freep(&sc->stts_data);
+@@ -3866,6 +4150,20 @@ static int mov_read_close(AVFormatContext *s)
+         av_freep(&sc->elst_data);
+         av_freep(&sc->rap_group);
+         av_freep(&sc->display_matrix);
 +        if (sc->encv_info)
 +            av_freep(&sc->encv_info);
 +        if (sc->aux_info) {
@@ -568,7 +608,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
      }
  
      if (mov->dv_demux) {
-@@ -3444,6 +3742,7 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -4208,6 +4506,7 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
      AVStream *st = NULL;
      int ret;
      mov->fc = s;
@@ -576,7 +616,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
   retry:
      sample = mov_find_next_sample(s, &st);
      if (!sample) {
-@@ -3473,7 +3772,9 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -4237,7 +4536,9 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
                     sc->ffindex, sample->pos);
              return AVERROR_INVALIDDATA;
          }
@@ -586,7 +626,7 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
          if (ret < 0)
              return ret;
          if (sc->has_palette) {
-@@ -3522,8 +3823,26 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -4286,8 +4587,26 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
          goto retry;
      pkt->flags |= sample->flags & AVINDEX_KEYFRAME ? AV_PKT_FLAG_KEY : 0;
      pkt->pos = sample->pos;
@@ -615,12 +655,13 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/mov.c ffmpeg-2.1.3-nacl/libavformat/mov
      return 0;
  }
  
-diff --git ffmpeg-2.1.3-nacl/libavformat/utils.c ffmpeg-2.1.3-nacl/libavformat/utils.c
---- ffmpeg-2.1.3-nacl/libavformat/utils.c
-+++ ffmpeg-2.1.3-nacl/libavformat/utils.c
-@@ -3328,6 +3328,12 @@ void avformat_close_input(AVFormatContext **ps)
+diff --git a/libavformat/utils.c b/libavformat/utils.c
+index 17ae300..0c77649 100644
+--- a/libavformat/utils.c
++++ b/libavformat/utils.c
+@@ -3643,6 +3643,12 @@ void avformat_close_input(AVFormatContext **ps)
+         if (s->iformat->read_close)
              s->iformat->read_close(s);
-     }
  
 +    if (s->protection_system_data) {
 +        int i;
@@ -631,10 +672,11 @@ diff --git ffmpeg-2.1.3-nacl/libavformat/utils.c ffmpeg-2.1.3-nacl/libavformat/u
      avformat_free_context(s);
  
      *ps = NULL;
-diff --git ffmpeg-2.1.3-nacl/libavutil/mem.c ffmpeg-2.1.3-nacl/libavutil/mem.c
---- ffmpeg-2.1.3-nacl/libavutil/mem.c
-+++ ffmpeg-2.1.3-nacl/libavutil/mem.c
-@@ -57,6 +57,10 @@ void  free(void *ptr);
+diff --git a/libavutil/mem.c b/libavutil/mem.c
+index 5fd2395..984bce6 100644
+--- a/libavutil/mem.c
++++ b/libavutil/mem.c
+@@ -59,6 +59,10 @@ void  free(void *ptr);
  
  #endif /* MALLOC_PREFIX */
  
@@ -645,3 +687,6 @@ diff --git ffmpeg-2.1.3-nacl/libavutil/mem.c ffmpeg-2.1.3-nacl/libavutil/mem.c
  #define ALIGN (HAVE_AVX ? 32 : 16)
  
  /* NOTE: if you want to override these functions with your own
+--
+2.5.0
+

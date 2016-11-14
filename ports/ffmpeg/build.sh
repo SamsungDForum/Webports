@@ -2,12 +2,11 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-if [ "${NACL_LIBC}" = "newlib" ]; then
-  # needed for RLIMIT_CPU
-  NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-fi
+# needed for RLIMIT_CPU
+EnableGlibcCompat
 
 ConfigureStep() {
+
   SetupCrossEnvironment
 
   local extra_args=""
@@ -29,6 +28,7 @@ ConfigureStep() {
     --cross-prefix=${NACL_CROSS_PREFIX}- \
     --target-os=linux \
     --disable-everything \
+    --disable-programs \
     --enable-gpl \
     --enable-static \
     --enable-cross-compile \
@@ -40,6 +40,7 @@ ConfigureStep() {
     --enable-parser=aac,h264,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
     --enable-bsf=aac_adtstoasc \
     --enable-filter=transpose \
+    --disable-decoder=dpx \
     --prefix=${PREFIX} \
     ${extra_args}
 }

@@ -13,9 +13,11 @@ import common
 from naclports import source_package
 from naclports import error
 from naclports import paths
+from naclports.configuration import Configuration
 
 
 class TestSourcePackage(common.NaclportsTest):
+
   def setUp(self):
     super(TestSourcePackage, self).setUp()
     self.tempdir = tempfile.mkdtemp(prefix='naclports_test_')
@@ -26,11 +28,11 @@ class TestSourcePackage(common.NaclportsTest):
     self.AddPatch(patch('naclports.paths.BUILD_ROOT',
                         os.path.join(self.tempdir, 'build_root')))
     self.AddPatch(patch('naclports.paths.CACHE_ROOT',
-                         os.path.join(self.tempdir, 'cache')))
+                        os.path.join(self.tempdir, 'cache')))
     self.AddPatch(patch('naclports.paths.OUT_DIR',
-                         os.path.join(self.tempdir, 'out_dir')))
+                        os.path.join(self.tempdir, 'out_dir')))
     self.AddPatch(patch('naclports.paths.STAMP_DIR',
-                         os.path.join(self.tempdir, 'stamp_dir')))
+                        os.path.join(self.tempdir, 'stamp_dir')))
 
   def CreateTestPackage(self, name, extra_info=''):
     """Creates a source package directory in a temporary directory.
@@ -100,8 +102,8 @@ class TestSourcePackage(common.NaclportsTest):
     pkg = source_package.SourcePackage(root)
     location = pkg.GetBuildLocation()
     self.assertTrue(location.startswith(paths.BUILD_ROOT))
-    self.assertEqual(os.path.basename(location),
-                     '%s-%s' % (pkg.NAME, pkg.VERSION))
+    self.assertEqual(os.path.basename(location), '%s-%s' %
+                     (pkg.NAME, pkg.VERSION))
 
   @patch('naclports.util.Log', Mock())
   def testExtract(self):
@@ -126,8 +128,7 @@ class TestSourcePackage(common.NaclportsTest):
     )
 
     for secs, expected_result in expectations:
-      self.assertEqual(expected_result,
-                       source_package.FormatTimeDelta(secs))
+      self.assertEqual(expected_result, source_package.FormatTimeDelta(secs))
 
   def testConflicts(self):
     root = self.CreateTestPackage('foo', 'CONFLICTS=(bar)')
@@ -147,16 +148,24 @@ class TestSourcePackage(common.NaclportsTest):
   def testDisabled(self):
     root = self.CreateTestPackage('foo', 'DISABLED=1')
     pkg = source_package.SourcePackage(root)
-    with self.assertRaisesRegexp(error.DisabledError,
-                                 'package is disabled'):
+    with self.assertRaisesRegexp(error.DisabledError, 'package is disabled'):
       pkg.CheckInstallable()
 
   def testDisabledArch(self):
     self.CreateTestPackage('bar', 'DISABLED_ARCH=(x86_64)')
 
+    pkg = source_package.CreatePackage(
+        'bar', config=Configuration(toolchain='clang-newlib'))
+    with self.assertRaisesRegexp(error.DisabledError,
+                                 'disabled for architecture: x86_64'):
+      pkg.CheckInstallable()
+
+  def testSingleArch(self):
+    self.CreateTestPackage('bar', 'ARCH=(arm)')
+
     pkg = source_package.CreatePackage('bar')
     with self.assertRaisesRegexp(error.DisabledError,
-                                 'disabled for current arch: x86_64'):
+                                 'disabled for architecture: pnacl$'):
       pkg.CheckInstallable()
 
   def testDisabledLibc(self):
@@ -164,8 +173,30 @@ class TestSourcePackage(common.NaclportsTest):
 
     pkg = source_package.CreatePackage('bar')
     with self.assertRaisesRegexp(error.DisabledError,
-                                 'cannot be built with newlib'):
+                                 'cannot be built with newlib$'):
       pkg.CheckInstallable()
+
+  def testDisabledToolchain(self):
+    self.CreateTestPackage('bar', 'DISABLED_TOOLCHAIN=(pnacl)')
+
+    pkg = source_package.CreatePackage('bar')
+    with self.assertRaisesRegexp(error.DisabledError,
+                                 'cannot be built with pnacl$'):
+      pkg.CheckInstallable()
+
+  def testDisabledToolchainArch(self):
+    self.CreateTestPackage('bar', 'DISABLED_TOOLCHAIN=(glibc/x86_64)')
+
+    pkg = source_package.CreatePackage(
+        'bar', config=Configuration(toolchain='glibc'))
+    with self.assertRaisesRegexp(
+        error.DisabledError, 'cannot be built with glibc for x86_64$'):
+      pkg.CheckInstallable()
+
+    self.CreateTestPackage('bar2', 'DISABLED_TOOLCHAIN=(pnacl/arm)')
+
+    pkg = source_package.CreatePackage('bar2')
+    pkg.CheckInstallable()
 
   def testCheckInstallableDepends(self):
     self.CreateTestPackage('foo', 'DEPENDS=(bar)')
@@ -173,7 +204,7 @@ class TestSourcePackage(common.NaclportsTest):
 
     pkg = source_package.CreatePackage('foo')
     with self.assertRaisesRegexp(error.DisabledError,
-                                 'bar: package is disabled'):
+                                 'bar: package is disabled$'):
       pkg.CheckInstallable()
 
   def testCheckBuildable(self):
@@ -181,7 +212,7 @@ class TestSourcePackage(common.NaclportsTest):
 
     pkg = source_package.CreatePackage('foo')
     with self.assertRaisesRegexp(error.DisabledError,
-                                 'can only be built on solaris'):
+                                 'can only be built on solaris$'):
       pkg.CheckBuildable()
 
   @patch('naclports.util.GetSDKVersion', Mock(return_value=123))
@@ -208,8 +239,8 @@ class TestSourcePackage(common.NaclportsTest):
       NAME=foo
       VERSION=1.0
       BUILD_CONFIG=release
-      BUILD_ARCH=x86_64
-      BUILD_TOOLCHAIN=newlib
+      BUILD_ARCH=pnacl
+      BUILD_TOOLCHAIN=pnacl
       BUILD_SDK_VERSION=1234
       ''')
     self.assertRegexpMatches(pkg.InstalledInfoContents(), expected_contents)

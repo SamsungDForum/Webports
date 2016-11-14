@@ -18,12 +18,26 @@ else
   UPLOAD_PATH+=${BUILDBOT_GOT_REVISION}
 fi
 
+#
+# Signal to buildbot that a step failed.
+# $1 - target or package name that failed.
+# $2 - architecure for which failure occured.
+#
 BuildSuccess() {
-  echo "naclports: Build SUCCEEDED $1 (${NACL_ARCH}/${TOOLCHAIN})"
+  local target=$1
+  local arch=$2
+  echo "naclports: Build SUCCEEDED ${target} (${arch}/${TOOLCHAIN})"
 }
 
+#
+# Signal to buildbot that a step failed.
+# $1 - target or package name that failed.
+# $2 - architecure for which failure occured.
+#
 BuildFailure() {
-  MESSAGE="naclports: Build FAILED for $1 (${NACL_ARCH}/${TOOLCHAIN})"
+  local target=$1
+  local arch=$2
+  MESSAGE="naclports: Build FAILED for ${target} (${arch}/${TOOLCHAIN})"
   echo ${MESSAGE}
   echo "@@@STEP_FAILURE@@@"
   MESSAGES="${MESSAGES}\n${MESSAGE}"
@@ -46,82 +60,66 @@ export FORCE_MIRROR="yes"
 # $1 - Name of package to build
 #
 BuildPackage() {
-  PACKAGE=$1
+  local package=$1
   shift
-  if RunCmd bin/naclports ${NACLPORTS_ARGS} "$@" install ${PACKAGE}; then
-    BuildSuccess ${PACKAGE}
+  if RunCmd bin/naclports ${NACLPORTS_ARGS} "$@" install ${package}; then
+    BuildSuccess ${PACKAGE} ${NACL_ARCH}
   else
-    BuildFailure ${PACKAGE}
+    BuildFailure ${PACKAGE} ${NACL_ARCH}
   fi
 }
 
-ARCH_LIST="i686 x86_64 arm pnacl"
-TOOLCHAIN_LIST="pnacl newlib glibc bionic"
-
 InstallPackageMultiArch() {
   echo "@@@BUILD_STEP ${TOOLCHAIN} $1@@@"
-  for NACL_ARCH in ${ARCH_LIST}; do
-    export NACL_ARCH
-    # pnacl only works on pnacl and nowhere else.
-    if [ "${TOOLCHAIN}" = "pnacl" -a "${NACL_ARCH}" != "pnacl" ]; then
-      continue
-    fi
-    if [ "${TOOLCHAIN}" != "pnacl" -a "${NACL_ARCH}" = "pnacl" ]; then
-      continue
-    fi
-    # glibc doesn't work on arm for now.
-    if [ "${TOOLCHAIN}" = "glibc" -a "${NACL_ARCH}" = "arm" ]; then
-      continue
-    fi
-    # i686-nacl-clang doesn't reference the i686-nacl/usr/include or
-    # i686-nacl/usr/lib.
-    # TODO(sbc): remove this once nacl-clang works with i686-nacl
-    if [ "${TOOLCHAIN}" = "clang-newlib" -a "${NACL_ARCH}" = "i686" ]; then
-      continue
-    fi
-    # bionic only works on arm for now.
-    if [ "${TOOLCHAIN}" = "bionic" -a "${NACL_ARCH}" != "arm" ]; then
-      continue
-    fi
-    if ! RunCmd bin/naclports uninstall --all ; then
-      BuildFailure $1
-      return
-    fi
-    if ! RunCmd bin/naclports ${NACLPORTS_ARGS} install $1 ; then
-      # Early exit if one of the architecures fails. This mean the
-      # failure is always at the end of the build step.
-      BuildFailure $1
+
+  if [ "${TOOLCHAIN}" = "pnacl" ]; then
+    arch_list="pnacl"
+  elif [ "${TOOLCHAIN}" = "emscripten" ]; then
+    arch_list="emscripten"
+  elif [ "${TOOLCHAIN}" = "bionic" ]; then
+    arch_list="arm"
+  else
+    arch_list="i686 x86_64 arm"
+  fi
+
+  for arch in ${arch_list}; do
+    if ! RunCmd bin/naclports -a ${arch} uninstall --all ; then
+      BuildFailure $1 ${arch}
       return
     fi
   done
-  export NACL_ARCH=all
-  BuildSuccess $1
+
+  for arch in ${arch_list}; do
+    if ! RunCmd bin/naclports -a ${arch} ${NACLPORTS_ARGS} install $1 ; then
+      # Early exit if one of the architecures fails. This mean the
+      # failure is always at the end of the build step.
+      BuildFailure $1 ${arch}
+      return
+    fi
+  done
+  BuildSuccess $1 all
 }
 
 CleanToolchain() {
   # Don't use TOOLCHAIN and NACL_ARCH here as we don't want to
   # clobber the globals.
   TC=$1
-  for ARCH in ${ARCH_LIST}; do
-    # TODO(bradnelson): reduce the duplication here.
-    # pnacl only works on pnacl and nowhere else.
-    if [ "${TC}" = "pnacl" -a "${ARCH}" != "pnacl" ]; then
-      continue
-    fi
-    if [ "${TC}" != "pnacl" -a "${ARCH}" = "pnacl" ]; then
-      continue
-    fi
-    # glibc doesn't work on arm for now.
-    if [ "${TC}" = "glibc" -a "${ARCH}" = "arm" ]; then
-      continue
-    fi
-    # bionic only works on arm for now.
-    if [ "${TC}" = "bionic" -a "${ARCH}" != "arm" ]; then
-      continue
-    fi
-    if ! TOOLCHAIN=${TC} NACL_ARCH=${ARCH} RunCmd \
-        bin/naclports clean --all; then
-      TOOLCHAIN=${TC} NACL_ARCH=${ARCH} BuildFailure clean
+
+  if [ "${TC}" = "pnacl" ]; then
+    arch_list="pnacl"
+  elif [ "${TC}" = "emscripten" ]; then
+    arch_list="emscripten"
+  elif [ "${TC}" = "bionic" ]; then
+    arch_list="arm"
+  elif [ "${TC}" = "glibc" ]; then
+    arch_list="i686 x86_64"
+  else
+    arch_list="i686 x86_64 arm"
+  fi
+
+  for ARCH in ${arch_list}; do
+    if ! RunCmd bin/naclports -a ${ARCH} -t ${TC} clean --all; then
+      TOOLCHAIN=${TC} BuildFailure clean ${ARCH}
     fi
   done
 }
@@ -131,9 +129,3 @@ CleanCurrentToolchain() {
   CleanToolchain ${TOOLCHAIN}
 }
 
-CleanAllToolchains() {
-  echo "@@@BUILD_STEP clean all@@@"
-  for TC in ${TOOLCHAIN_LIST}; do
-    CleanToolchain ${TC}
-  done
-}

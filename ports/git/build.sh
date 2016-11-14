@@ -2,17 +2,15 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-EXECUTABLES="git git-remote-http"
+EXECUTABLES="git git-remote-http git-remote-https"
 
 BUILD_DIR=${SRC_DIR}
-export EXTLIBS+="${NACL_CLI_MAIN_LIB} \
--lppapi_simple -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
+export EXTLIBS="${NACL_CLI_MAIN_LIB}"
 
 if [ "${NACL_SHARED}" != "1" ]; then
   # These are needed so that the configure can detect libcurl when statically
   # linked.
-  export LIBS="-lcurl -lssl -lcrypto -lz"
-  EXTLIBS+=" -lglibc-compat"
+  NACLPORTS_LIBS+=" -lcurl -lssl -lcrypto -lz"
 fi
 
 if [ ${OS_NAME} = "Darwin" ]; then
@@ -22,14 +20,18 @@ if [ ${OS_NAME} = "Darwin" ]; then
   export PATH=${PATH}:/usr/local/opt/gettext/bin
 fi
 
-ConfigureStep() {
-  ChangeDir ${SRC_DIR}
-  autoconf
+if [ "${NACL_LIBC}" = "newlib" ]; then
+  export NO_RT_LIBRARY=1
+  EXTLIBS+=" -lglibc-compat"
+fi
+export CROSS_COMPILE=1
+export NEEDS_CRYPTO_WITH_SSL=YesPlease
 
-  if [ "${NACL_LIBC}" = "newlib" ]; then
-    NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-    LIBS+=" -lglibc-compat"
-  fi
+EnableGlibcCompat
+
+ConfigureStep() {
+  NACLPORTS_CPPFLAGS+=" -Dpipe=nacl_spawn_pipe"
+  autoconf
 
   if [ "${NACL_LIBC}" = "glibc" ]; then
     # Because libcrypto.a needs dlsym we need to add this explicitly.
@@ -41,21 +43,23 @@ ConfigureStep() {
 }
 
 BuildStep() {
-  export CROSS_COMPILE=1
   SetupCrossEnvironment
-  ChangeDir ${SRC_DIR}
+  export CCLD=${CXX}
   # Git's build doesn't support building outside the source tree.
   # Do a clean to make rebuild after failure predictable.
   LogExecute make clean
-  export CCLD=${CXX}
-  export NEEDS_CRYPTO_WITH_SSL=YesPlease
   DefaultBuildStep
 }
 
 InstallStep() {
-  return
-}
-
-PublishStep() {
-  PublishByArchForDevEnv
+  SetupCrossEnvironment
+  export CCLD=${CXX}
+  DefaultInstallStep
+  # Remove some of the git symlinks to save some space (since symlinks are
+  # currnely only supported via file copying).
+  for f in ${DESTDIR}${PREFIX}/libexec/git-core/*; do
+    if [ -L $f ]; then
+      Remove $f
+    fi
+  done
 }

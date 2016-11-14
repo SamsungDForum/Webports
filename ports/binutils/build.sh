@@ -4,8 +4,7 @@
 
 export ac_cv_func_getrlimit=no
 
-export EXTRA_LIBS="${NACL_CLI_MAIN_LIB} -lppapi_simple \
-  -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
+export EXTRA_LIBS="${NACL_CLI_MAIN_LIB}"
 EXTRA_CONFIGURE_ARGS="\
   --enable-targets=x86_64-nacl,arm-nacl,avr \
   --disable-werror \
@@ -18,16 +17,13 @@ BuildStep() {
 }
 
 InstallStep() {
-  MakeDir ${PUBLISH_DIR}
-  for nexe in binutils/*.nexe gas/*.nexe ld/*.nexe; do
-    local name=$(basename $nexe .nexe | sed 's/-new//')
-    cp ${nexe} ${PUBLISH_DIR}/${name}_${NACL_ARCH}${NACL_EXEEXT}
+  DefaultInstallStep
 
-    pushd ${PUBLISH_DIR}
-    LogExecute python ${NACL_SDK_ROOT}/tools/create_nmf.py \
-        ${PUBLISH_DIR}/${name}_*${NACL_EXEEXT} \
-        -s . \
-        -o ${name}.nmf
-    popd
-  done
+  # The ldscripts that ship with this verion of binutils doesn't seem to
+  # work with the glibc toolchain devenv.  Instead we copy the linker scripts
+  # out of the SDK root.
+  rm -rf ${DESTDIR}${PREFIX}/${NACL_ARCH}-nacl/lib/ldscripts
+  LogExecute cp -r \
+   ${NACL_SDK_ROOT}/toolchain/${OS_SUBDIR}_x86_glibc/x86_64-nacl/lib/ldscripts \
+   ${DESTDIR}${PREFIX}/${NACL_ARCH}-nacl/lib/
 }

@@ -16,15 +16,23 @@ EXTRA_CONFIGURE_ARGS="--with-privsep-path=${PREFIX}/var/empty"
 export ac_cv_func_truncate=yes
 export ac_cv_func_sigaction=yes
 
-export SSHLIBS="-lppapi_simple -lnacl_io -lnacl_spawn -lcli_main -lppapi_cpp \
--lppapi -l${NACL_CPP_LIB}"
+export SSHLIBS="${NACL_CLI_MAIN_LIB}"
 if [ "${NACL_LIBC}" = "newlib" ]; then
-  CFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-  export LIBS=" -lcrypto -lglibc-compat"
+  NACLPORTS_LIBS+=" -lcrypto"
   export LD="${NACLCXX}"
 fi
 
+if [ "${NACL_LIBC}" = "glibc" ]; then
+  # The host version of 'strip' doesn't always recognise NaCl binaries
+  # and ssh runs 'install -s' which doesn't always runs the host 'strip'
+  EXTRA_CONFIGURE_ARGS+=" --disable-strip"
+fi
+
+EnableGlibcCompat
+
 PublishStep() {
+  DefaultInstallStep
+
   MakeDir ${PUBLISH_DIR}
   local ASSEMBLY_DIR="${PUBLISH_DIR}/openssh"
   MakeDir ${ASSEMBLY_DIR}

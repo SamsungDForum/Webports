@@ -5,4 +5,7 @@ LICENSE=GPL
 DEPENDS=(nacl-spawn)
 DISABLED_LIBC=(bionic)
 DISABLED_ARCH=(pnacl)
-DISABLED_TOOLCHAIN=(clang-newlib)
+# arm-nacl-clang asserts in llvm::ARMInstPrinter::printInstruction:
+# https://code.google.com/p/nativeclient/issues/detail?id=4114
+DISABLED_TOOLCHAIN=(clang-newlib/arm emscripten)
+TOOLCHAIN_INSTALL=0

@@ -13,13 +13,15 @@ TEST_F(DevEnvTest, 'testPackageInstall', function() {
   return Promise.resolve().then(function() {
     return self.installPackage('coreutils');
   }).then(function() {
-    return self.installPackage('git');
+    return self.installPackage('zlib');
+  }).then(function() {
+    return self.installPackage('curl');
   }).then(function() {
     return self.installPackage('make');
   }).then(function() {
     return self.installPackage('python');
   }).then(function() {
-    return self.installPackage('curl');
+    return self.installPackage('git');
   });
 });
 
@@ -127,7 +129,7 @@ TEST_F(DevEnvFileTest, 'testGit', function() {
          ' delete mode 100644 test.txt']);
   }).then(function() {
     return self.checkCommandReLines(
-        'cd foo && git log --full-diff -p .', 0,
+        'cd foo && PAGER=cat git log --full-diff -p .', 0,
         [/^commit [0-9a-f]{40}$/,
          'Author: John Doe <johndoe@example.com>',
          /^Date:   .+$/,
@@ -202,7 +204,7 @@ TEST_F(DevEnvFileTest, 'testMake', function() {
   }).then(function() {
     function checkOne() {
       return Promise.resolve().then(function() {
-        return self.readFile('/home/user/part' + i + '.z', foo);
+        return self.readFile('/home/user/part' + i + '.z');
       }).then(function(data) {
         ASSERT_EQ(foo, data);
         i++;
@@ -288,7 +290,7 @@ TEST_F(DevEnvFileTest, 'testCurlAndUnzip', function() {
   var self = this;
   return Promise.resolve().then(function() {
     return self.checkCommand(
-       'curl http://nacltools.storage.googleapis.com/io2014/voronoi.zip -O');
+       'curl https://nacltools.storage.googleapis.com/io2014/voronoi.zip -O');
   }).then(function() {
     return self.checkCommand('unzip voronoi.zip');
   }).then(function() {

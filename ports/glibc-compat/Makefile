@@ -3,16 +3,21 @@
 # found in the LICENSE file.
 
 ifeq (,$(findstring $(TOOLCHAIN),glibc bionic))
-LIBC=newlib
+LIBC = newlib
 endif
 
 CFLAGS += -Wno-implicit-function-declaration
-CPPFLAGS := -Werror -Wno-unused-value -pthread
+CPPFLAGS += -Werror -Wno-unused-value -pthread
 CPPFLAGS += -DNACL_SDK_VERSION=$(NACL_SDK_VERSION)
-CPPFLAGS += -I$(NACL_SDK_ROOT)/include
 OUT := out
 SOURCES := \
   src/alarm.c \
+  src/getpass.c \
+  src/err.c \
+  src/fpending.c \
+  src/dirfd.c \
+  src/flock.c \
+  src/fts.c \
   src/getprotobyname_r.c \
   src/getservbyname_r.c \
   src/herrno.c \
@@ -25,6 +30,7 @@ SOURCES := \
   src/ns_name.c \
   src/ns_netint.c \
   src/ns_samedomain.c \
+  src/openat.c \
   src/qsort_r.c \
   src/random.c \
   src/realpath.c \
@@ -35,7 +41,11 @@ SOURCES := \
   src/res_libc.c \
   src/res_mkquery.c \
   src/res_query.c \
-  src/res_send.c
+  src/res_send.c \
+  src/setregid.c \
+  src/tcgetpgrp.c \
+  src/timegm.c \
+  src/writev.c
 
 OBJS := $(patsubst src/%.c,$(OUT)/%.o,$(SOURCES))
 
@@ -59,6 +69,10 @@ $(OUT)/%.o : src/%.c
 	@mkdir -p $(OUT)
 	$(CC_PREFIX)$(CC) -o $@ -c $< $(CFLAGS) $(CPPFLAGS)
 
+$(OUT)/%.o : src/%.cc
+	@mkdir -p $(OUT)
+	$(CXX_PREFIX)$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS)
+
 all: $(LIB) $(OUT)/glibc_compat_test
 
 $(OUT)/libglibc-compat.a: $(OBJS)
@@ -66,10 +80,9 @@ $(OUT)/libglibc-compat.a: $(OBJS)
 
 TEST_LIBS=$(LIB) -lgtest -lpthread
 
-$(OUT)/glibc_compat_test: src/test.cc $(LIB)
+$(OUT)/glibc_compat_test: $(OUT)/test.o $(LIB)
 	@mkdir -p $(OUT)
-	$(CXX_PREFIX)$(CXX) -o $@ $< -L$(OUT) $(LDFLAGS) $(CXXFLAGS) \
-		$(CPPFLAGS) $(TEST_LIBS)
+	$(CXX_PREFIX)$(CXX) -o $@ $< -L$(OUT) $(LDFLAGS) $(TEST_LIBS)
 
 test: $(OUT)/glibc_compat_test
 

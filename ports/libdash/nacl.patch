@@ -57,7 +57,7 @@ index aeae94f..bfd62db 100644
 +add_library(dash STATIC ${libdash_source})
 +#target_link_libraries(dash ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBXML2_LIBRARIES})
 +
-+target_link_libraries(dash curl ssl crypto xml2 z)
++target_link_libraries(dash curl glibc-compat ssl crypto xml2 z)
 +
 +if ($ENV{NACL_ARCH} STREQUAL "pnacl")
 +    target_link_libraries(dash nacl_io)

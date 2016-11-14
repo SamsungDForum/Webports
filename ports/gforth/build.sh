@@ -29,11 +29,8 @@ ConfigureStep() {
   export skipcode=no
   NACLPORTS_CPPFLAGS+=" -Dmain=nacl_main"
   export LIBS+=" -Wl,--undefined=nacl_main ${NACL_CLI_MAIN_LIB} \
-      -ltar -lppapi_simple -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
-  if [ "${NACL_LIBC}" = "newlib" ]; then
-    NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-    LIBS+=" -lglibc-compat"
-  fi
+      -ltar -lppapi_simple -lnacl_io -lppapi -l${NACL_CXX_LIB}"
+  EnableGlibcCompat
   ChangeDir ${BUILD_DIR}
   EXTRA_CONFIGURE_ARGS="--without-check"
   DefaultConfigureStep
@@ -64,6 +61,7 @@ InstallStep() {
   rm -f ${TAR_DIR}/lib/gforth/0.7.2/gforth-ditc
   tar cf ${PUBLISH_DIR}/gforth.tar naclports-dummydir
   rm -rf ${TAR_DIR}
+  shasum ${PUBLISH_DIR}/gforth.tar > ${PUBLISH_DIR}/gforth.tar.hash
 
   LogExecute python ${NACL_SDK_ROOT}/tools/create_nmf.py \
       gforth_*${NACL_EXEEXT} \

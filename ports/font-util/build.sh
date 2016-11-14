@@ -10,16 +10,12 @@ EXECUTABLES="bdftruncate${NACL_EXEEXT} ucs2any${NACL_EXEEXT}"
 
 NACLPORTS_CPPFLAGS+=" -Dmain=nacl_main"
 NACLPORTS_LDFLAGS+=" -Dmain=nacl_main"
-export LIBS="-Wl,--undefined=nacl_main \
-  ${NACL_CLI_MAIN_LIB} -lppapi_simple \
-  -lnacl_io -lppapi -lppapi_cpp -l${NACL_CPP_LIB}"
+export LIBS="${NACL_CLI_MAIN_LIB}"
 
-if [ "${NACL_LIBC}" = "newlib" ]; then
-  NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
-  export LIBS+=" -lglibc-compat"
-fi
+EnableGlibcCompat
 
 BuildForHost() {
+  Banner "Building for Host"
   MakeDir ${HOST_BUILD_DIR}
   ChangeDir ${HOST_BUILD_DIR}
   CFLAGS="" LDFLAGS="" LIBS="" CC="gcc -m32" \
@@ -30,10 +26,7 @@ BuildForHost() {
 
 ConfigureStep() {
   BuildForHost
+  Banner "Building for NaCl"
   ChangeDir ${BUILD_DIR}
   DefaultConfigureStep
-}
-
-PublishStep() {
-  PublishByArchForDevEnv
 }

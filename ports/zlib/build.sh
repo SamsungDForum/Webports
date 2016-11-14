@@ -11,26 +11,36 @@ if [ "${NACL_SHARED}" = "1" ]; then
 fi
 
 ConfigureStep() {
+  local CONFIGURE_FLAGS="--prefix='${PREFIX}'"
+  if [ "${TOOLCHAIN}" = "emscripten" ]; then
+    # The emscripten toolchain will happily accept -shared (although it
+    # emits a warning if the output name ends with .so).  This means that
+    # zlib's configure script tries to build shared as well as static
+    # libraries until we explicitly disable shared libraries like this.
+    CONFIGURE_FLAGS+=" --static"
+  fi
   LogExecute rm -f libz.*
   SetupCrossEnvironment
-  CHOST=${NACL_CROSS_PREFIX} LogExecute ./configure --prefix="${PREFIX}"
+  CFLAGS="${CPPFLAGS} ${CFLAGS}"
+  CXXFLAGS="${CPPFLAGS} ${CXXFLAGS}"
+  CHOST=${NACL_CROSS_PREFIX} LogExecute ./configure ${CONFIGURE_FLAGS}
 }
 
 RunMinigzip() {
   echo "Running minigzip test"
-  export LD_LIBRARY_PATH=.
+  export SEL_LDR_LIB_PATH=.
   if echo "hello world" | ./minigzip | ./minigzip -d; then
     echo '  *** minigzip test OK ***'
   else
     echo '  *** minigzip test FAILED ***'
     exit 1
   fi
-  unset LD_LIBRARY_PATH
+  unset SEL_LDR_LIB_PATH
 }
 
 RunExample() {
   echo "Running exmple test"
-  export LD_LIBRARY_PATH=.
+  export SEL_LDR_LIB_PATH=.
   # This second test does not yet work on nacl (gzopen fails)
   if ./example; then \
     echo '  *** zlib test OK ***'; \
@@ -38,32 +48,25 @@ RunExample() {
     echo '  *** zlib test FAILED ***'; \
     exit 1
   fi
-  unset LD_LIBRARY_PATH
+  unset SEL_LDR_LIB_PATH
 }
 
 TestStep() {
-  if [ "${NACL_LIBC}" = "glibc" ]; then
-    # Tests do not currently run on GLIBC due to fdopen() not working
-    # TODO(sbc): Remove this once glibc is fixed:
-    # https://code.google.com/p/nativeclient/issues/detail?id=3362
-    return
-  fi
-
-  if [ "${NACL_ARCH}" = "pnacl" ]; then
+ if [ "${NACL_ARCH}" = "pnacl" ]; then
     local minigzip_pexe="minigzip${NACL_EXEEXT}"
     local example_pexe="example${NACL_EXEEXT}"
     local minigzip_script="minigzip"
     local example_script="example"
-    TranslateAndWriteSelLdrScript "${minigzip_pexe}" x86-32 \
+    TranslateAndWriteLauncherScript "${minigzip_pexe}" x86-32 \
       minigzip.x86-32.nexe "${minigzip_script}"
     RunMinigzip
-    TranslateAndWriteSelLdrScript "${minigzip_pexe}" x86-64 \
+    TranslateAndWriteLauncherScript "${minigzip_pexe}" x86-64 \
       minigzip.x86-64.nexe "${minigzip_script}"
     RunMinigzip
-    TranslateAndWriteSelLdrScript "${example_pexe}" x86-32 \
+    TranslateAndWriteLauncherScript "${example_pexe}" x86-32 \
       example.x86-32.nexe "${example_script}"
     RunExample
-    TranslateAndWriteSelLdrScript "${example_pexe}" x86-64 \
+    TranslateAndWriteLauncherScript "${example_pexe}" x86-64 \
       example.x86-64.nexe "${example_script}"
     RunExample
   else

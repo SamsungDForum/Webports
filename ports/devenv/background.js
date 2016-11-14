@@ -6,7 +6,6 @@
 
 'use strict';
 
-
 function newWindow() {
   chrome.app.window.create('bash.html', {
     'bounds': {
@@ -39,13 +38,15 @@ chrome.runtime.onMessageExternal.addListener(
 chrome.runtime.onConnectExternal.addListener(function(port) {
   var files = new FileManager();
   var manager = new NaClProcessManager();
+  // Assume a default terminal size for headless processes.
+  manager.onTerminalResize(80, 24);
   manager.setStdoutListener(function(output) {
     port.postMessage({name: 'nacl_stdout', output: output});
   });
 
-  function fileReply(name) {
+  function fileReply(name, data) {
     return function() {
-      port.postMessage({name: name});
+      port.postMessage({name: name, data: data});
     };
   }
   function fileError(name) {
@@ -87,12 +88,29 @@ chrome.runtime.onConnectExternal.addListener(function(port) {
       case 'nacl_sigint':
         manager.sigint();
         break;
-      case 'nacl_pipe':
-        PipeServer.pipe().then(function(pipes) {
-          port.postMessage({
-            name: 'nacl_pipe_reply',
-            pipes: pipes
-          });
+
+      case 'set_repo':
+        /*
+         * Copy the the local NaCl.conf into /usr/etc/pkg/repos/ replacing
+         * the origin.
+         */
+        console.log('set_repo')
+        getNaClArch(function(arch) {
+          var xhr = new XMLHttpRequest();
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4) {
+              if (xhr.status != 200) {
+                fileError('set_repo_error status=' + xhr.status)('xhr error');
+                return;
+              }
+              var data = xhr.responseText.replace('http://localhost:5103',
+                  msg.data);
+              files.writeText('/usr/etc/pkg/repos/NaCl.conf', data).then(
+                  fileReply('set_repo_reply'), fileError('set_repo_error'));
+            }
+          };
+          xhr.open('GET', '/repos_local_' + arch + '/NaCl.conf', true);
+          xhr.send();
         });
         break;
 
@@ -147,18 +165,6 @@ function FileManager() {
 FileManager.FS_SIZE = 1024*1024;
 
 /**
- * The path to the HTML5 directory.
- * @const
- */
-FileManager.HTML5_MOUNT_POINT = '/mnt/html5';
-
-/**
- * The path to the home directory.
- * @const
- */
-FileManager.HOME_MOUNT_POINT = '/home/user';
-
-/**
  * The path to the tmp directory.
  * @const
  */
@@ -180,23 +186,16 @@ FileManager.FS_NOT_INITIALIZED = 'File system not initialized.';
  * @returns {string} pathInfo.path The translated path.
  */
 FileManager.prototype.translatePath = function(path) {
-  if (path.indexOf(FileManager.HTML5_MOUNT_POINT) === 0) {
-    return {
-      fs: this.persistentFs,
-      path: path.replace(FileManager.HTML5_MOUNT_POINT, '')
-    };
-  } else if (path.indexOf(FileManager.HOME_MOUNT_POINT) === 0) {
-    return {
-      fs: this.persistentFs,
-      path: path.replace(FileManager.HOME_MOUNT_POINT, '/home')
-    };
-  } else if (path.indexOf(FileManager.TMP_MOUNT_POINT) === 0) {
+  if (path.indexOf(FileManager.TMP_MOUNT_POINT) === 0) {
     return {
       fs: this.temporaryFs,
       path: path.replace(FileManager.TMP_MOUNT_POINT, '')
     };
   } else {
-    throw new Error('path is outside of HTML5 filesystem');
+    return {
+      fs: this.persistentFs,
+      path: NaClProcessManager.fsroot + path
+    };
   }
 };
 
@@ -216,12 +215,12 @@ FileManager.prototype.init = function() {
 
   return Promise.all([
     requestFs(window.PERSISTENT),
-    requestFs(window.TEMPORARY)
+    requestFs(window.TEMPORARY),
   ]).then(function(filesystems) {
     self.persistentFs = filesystems[0];
     self.temporaryFs = filesystems[1];
     self.isInitialized = true;
-  });
+  }).then(makeRootDir);
 };
 
 /**

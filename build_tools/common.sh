@@ -20,7 +20,7 @@ set -o errexit
 unset MAKEFLAGS
 
 readonly TOOLS_DIR=$(cd "$(dirname "${BASH_SOURCE}")" ; pwd)
-readonly START_DIR=${PWD}
+START_DIR=${PWD}
 readonly NACL_SRC=$(dirname "${TOOLS_DIR}")
 readonly NACL_PACKAGES=${NACL_SRC}
 
@@ -53,22 +53,46 @@ readonly NACLPORTS_BIN=${NACL_PREFIX}/bin
 # embed this this information.
 readonly PREFIX=/naclports-dummydir
 
+NACLPORTS_LIBS=""
 NACLPORTS_CFLAGS=""
 NACLPORTS_CXXFLAGS=""
 NACLPORTS_CPPFLAGS="${NACL_CPPFLAGS}"
-
-# For the library path we always explicitly add to the link flags
-# otherwise 'libtool' won't find the libraries correctly.  This
-# is because libtool uses 'gcc -print-search-dirs' which does
-# not honor the external specs file.
 NACLPORTS_LDFLAGS="${NACL_LDFLAGS}"
-NACLPORTS_LDFLAGS+=" -L${NACLPORTS_LIBDIR} -Wl,-rpath-link=${NACLPORTS_LIBDIR}"
 
-# The NaCl version of ARM gcc emits warnings about va_args that
-# are not particularly useful
-if [ "${NACL_ARCH}" = "arm" -a "${TOOLCHAIN}" = "newlib" ]; then
-  NACLPORTS_CFLAGS="${NACLPORTS_CFLAGS} -Wno-psabi"
-  NACLPORTS_CXXFLAGS="${NACLPORTS_CXXFLAGS} -Wno-psabi"
+# i686-nacl-clang doesn't currently know about i686-nacl/usr/include
+# or i686-nacl/usr/lib.  Instead it shared the headers with x86_64
+# and uses x86_64-nacl/usr/lib32.
+# TODO(sbc): remove this once we fix:
+# https://code.google.com/p/nativeclient/issues/detail?id=4108
+if [ "${TOOLCHAIN}" = "clang-newlib" -a "${NACL_ARCH}" = "i686" ]; then
+  NACLPORTS_CPPFLAGS+=" -isystem ${NACLPORTS_INCLUDE}"
+  NACLPORTS_LDFLAGS+=" -L${NACLPORTS_LIBDIR}"
+fi
+
+if [ "${TOOLCHAIN}" = "clang-newlib" -o "${TOOLCHAIN}" = "pnacl" -o \
+     "${TOOLCHAIN}" = "emscripten" ]; then
+  NACLPORTS_CLANG=1
+else
+  NACLPORTS_CLANG=0
+fi
+
+# If stderr is a tty enable clang color compiler diagnostics
+if [ -t 1 -a "${NACLPORTS_CLANG}" = "1" ]; then
+  NACLPORTS_CPPFLAGS+=" -fcolor-diagnostics"
+  NACLPORTS_LDFLAGS+=" -fcolor-diagnostics"
+fi
+
+# TODO(sbc): Remove once the toolchainge gets fixed:
+# https://code.google.com/p/nativeclient/issues/detail?id=4333
+if [[ ${TOOLCHAIN} = pnacl ]]; then
+  NACLPORTS_CPPFLAGS+=" -fgnu-inline-asm"
+fi
+
+# The new arm-nacl-gcc glibc toolchain supports color diagnostics, but older
+# x86 and bionic versions do not.
+if [ "${TOOLCHAIN}" = "glibc" -a "${NACL_ARCH}" = "arm" ]; then
+  NACLPORTS_CPPFLAGS+=" -fdiagnostics-color=auto"
+  NACLPORTS_LDFLAGS+=" -fdiagnostics-color=auto"
 fi
 
 if [ "${NACL_ARCH}" = "emscripten" ]; then
@@ -95,8 +119,12 @@ fi
 # libcli_main.a has a circular dependency which makes static link fail
 # (cli_main => nacl_io => ppapi_cpp => cli_main). To break this loop,
 # you should use this instead of -lcli_main.
-export NACL_CLI_MAIN_LIB="-Xlinker -uPSUserCreateInstance \
-  -lcli_main -lnacl_spawn"
+export NACL_CLI_MAIN_LIB="-Xlinker -unacl_main -Xlinker -uPSUserMainGet \
+-lcli_main -lnacl_spawn -ltar -lppapi_simple -lnacl_io \
+-lppapi -l${NACL_CXX_LIB}"
+export NACL_CLI_MAIN_LIB_CPP="-Xlinker -unacl_main -Xlinker -uPSUserMainGet \
+-lcli_main -lnacl_spawn -ltar -lppapi_simple_cpp -lnacl_io \
+-lppapi_cpp -lppapi -l${NACL_CXX_LIB}"
 
 # Python variables
 NACL_PYSETUP_ARGS=""
@@ -124,7 +152,7 @@ else
   PACKAGE_SUFFIX="_${NACL_ARCH}"
 fi
 
-if [ "${NACL_ARCH}" != "pnacl" ]; then
+if [ "${NACL_ARCH}" != "pnacl" -a "${NACL_ARCH}" != "emscripten" ]; then
   PACKAGE_SUFFIX+=_${TOOLCHAIN}
 fi
 
@@ -139,12 +167,18 @@ PACKAGE_FILE=${NACL_PACKAGES_ROOT}/${NAME}_${VERSION}${PACKAGE_SUFFIX}.tar.bz2
 
 NACLPORTS_QUICKBUILD=${NACLPORTS_QUICKBUILD:-0}
 
-if [ "${OS_NAME}" = "Darwin" ]; then
-  OS_JOBS=4
-elif [ "${OS_NAME}" = "Linux" ]; then
-  OS_JOBS=$(nproc)
-else
-  OS_JOBS=1
+# Number of simultaneous jobs to run during parallel build.
+# Setting OS_JOBS=1 in the envrionment can be useful when debugging
+# build failures in building system that interleave the output of
+# of different jobs.
+if [ -z "${OS_JOBS:-}" ]; then
+  if [ "${OS_NAME}" = "Darwin" ]; then
+    OS_JOBS=4
+  elif [ "${OS_NAME}" = "Linux" ]; then
+    OS_JOBS=$(nproc)
+  else
+    OS_JOBS=1
+  fi
 fi
 
 GomaTest() {
@@ -163,7 +197,9 @@ GomaTest() {
 
 # If NACL_GOMA is defined then we check for goma and use it if its found.
 if [ -n "${NACL_GOMA:-}" ]; then
-  if [ "${NACL_ARCH}" != "pnacl" -a "${NACL_ARCH}" != "arm" ]; then
+  if [ "${NACL_ARCH}" != "pnacl" -a
+    "${NACL_ARCH}" != "arm" -a
+    "${NACL_ARCH}" != "emscripten"]; then
     # Assume that if CC is good then so is CXX since GomaTest is actually
     # quite slow
     if GomaTest "${NACLCC}"; then
@@ -209,14 +245,21 @@ if [ -z "${DESTDIR:-}" ]; then
 fi
 
 DESTDIR_LIB=${DESTDIR}/${PREFIX}/lib
+DESTDIR_BIN=${DESTDIR}/${PREFIX}/bin
 DESTDIR_INCLUDE=${DESTDIR}/${PREFIX}/include
 
 PUBLISH_DIR="${NACL_PACKAGES_PUBLISH}/${PACKAGE_NAME}/${TOOLCHAIN}"
+PUBLISH_CREATE_NMF_ARGS="-L ${DESTDIR_LIB}"
 
 SKIP_SEL_LDR_TESTS=0
 
-# Skip sel_ldr tests when building for arm
-if [ "${NACL_ARCH}" = "arm" ]; then
+# Skip sel_ldr tests on ARM, except on linux where we have qemu-arm available.
+if [ "${NACL_ARCH}" = "arm" -a "${OS_NAME}" != "Linux" ]; then
+  SKIP_SEL_LDR_TESTS=1
+fi
+
+# sel_ldr.py doesn't know how to run bionic-built nexes
+if [ "${TOOLCHAIN}" = "bionic" ]; then
   SKIP_SEL_LDR_TESTS=1
 fi
 
@@ -231,44 +274,28 @@ fi
 # Always run
 ######################################################################
 
-CheckPatchVersion() {
-  # refuse patch 2.6
-  if ! which patch > /dev/null; then
-    echo 'error: patch command not found, please install and try again.'
-    exit 1
-  fi
-  if [ "$(patch --version 2> /dev/null | sed q)" = "patch 2.6" ]; then
-    echo "patch 2.6 is incompatible with these scripts."
-    echo "Please install either version 2.5.9 (or earlier)"
-    echo "or version 2.6.1 (or later.)"
-    exit -1
-  fi
-}
-
-
-CheckToolchain() {
-  if [ -n "${LIBC:-}" ]; then
-    if [ "${LIBC}" == "glibc" ]; then
-      if [ "${NACL_LIBC}" != "glibc" ]; then
-        echo "This package must be built with glibc (\$TOOLCHAIN=glibc)"
-        exit 1
-      fi
-    elif [ "${LIBC}" == "newlib" ]; then
-      if [ "${NACL_LIBC}" != "newlib" ]; then
-        echo "This package must be built with newlib (\$TOOLCHAIN=newlib)"
-        exit 1
-      fi
-    fi
-  fi
-}
-
-
 InstallConfigSite() {
   CONFIG_SITE=${NACL_PREFIX}/share/config.site
   MakeDir "${NACL_PREFIX}/share"
   echo "ac_cv_exeext=${NACL_EXEEXT}" > "${CONFIG_SITE}"
 }
 
+
+#
+# $1 - src
+# $2 - dest
+#
+InstallHeader() {
+  local src=$1
+  local dest=$2
+  if [ -f "${dest}" ]; then
+    if cmp "${src}" "${dest}" > /dev/null; then
+      return
+    fi
+  fi
+  MakeDir "$(dirname ${dest})"
+  LogExecute install -m 644 "${src}" "${dest}"
+}
 
 #
 # When configure checks for system headers is doesn't pass CFLAGS
@@ -283,6 +310,10 @@ InjectSystemHeaders() {
     local TC_DIR=${TOOLCHAIN}
   fi
 
+  if [ ${TOOLCHAIN} = "glibc" ]; then
+    InstallHeader "${TOOLS_DIR}/stubs.h" "${NACLPORTS_INCLUDE}/gnu/stubs.h"
+  fi
+
   local TC_INCLUDES=${NACL_SDK_ROOT}/include/${TC_DIR}
   if [ ! -d "${TC_INCLUDES}" ]; then
     return
@@ -291,15 +322,10 @@ InjectSystemHeaders() {
   MakeDir ${NACLPORTS_INCLUDE}
   for inc in $(find ${TC_INCLUDES} -type f); do
     inc="${inc#${TC_INCLUDES}}"
+    inc="${inc#${TOOLS_DIR}}"
     src="${TC_INCLUDES}${inc}"
     dest="${NACLPORTS_INCLUDE}${inc}"
-    if [ -f "${dest}" ]; then
-      if cmp "${src}" "${dest}" > /dev/null; then
-        continue
-      fi
-    fi
-    MakeDir "$(dirname ${dest})"
-    LogExecute install -m 644 "${src}" "${dest}"
+    InstallHeader $src $dest
   done
 }
 
@@ -374,11 +400,18 @@ PatchSpecsFile() {
       s|$| -rpath-link=${SED_SAFE_SPACES_USR_LIB} -L${SED_SAFE_SPACES_USR_LIB}|
     }" > "${SPECS_FILE}"
 
-  # For static-only toolchains (i.e. newlib), modify the specs file to give an
+  # For static-only toolchains (i.e. pnacl), modify the specs file to give an
   # error when attempting to create a shared object.
   if [ "${NACL_SHARED}" != "1" ]; then
     sed -i.bak "s/%{shared:-shared/%{shared:%e${ERROR_MSG}/" "${SPECS_FILE}"
   fi
+
+  # For the library path we always explicitly add to the link flags
+  # otherwise 'libtool' won't find the libraries correctly.  This
+  # is because libtool uses 'gcc -print-search-dirs' which does
+  # not honor the external specs file.
+  NACLPORTS_LDFLAGS+=" -L${NACLPORTS_LIBDIR}"
+  NACLPORTS_LDFLAGS+=" -Wl,-rpath-link=${NACLPORTS_LIBDIR}"
 }
 
 
@@ -399,16 +432,6 @@ Banner() {
 LogExecute() {
   echo "$@"
   "$@"
-}
-
-
-# Set the ARCHIVE_NAME variable to the name of the upstream
-# tarball.  If ${URL} is not define (when there is no upstream)
-# then leave ARCHIVE_NAME unset.
-ArchiveName() {
-  if [ -z "${ARCHIVE_NAME:-}" -a -n "${URL:-}" ]; then
-    ARCHIVE_NAME=${URL_FILENAME:-$(basename ${URL})}
-  fi
 }
 
 
@@ -483,6 +506,13 @@ SetOptFlags() {
   fi
 }
 
+EnableGlibcCompat() {
+  if [ "${NACL_LIBC}" = "newlib" ]; then
+    NACLPORTS_CPPFLAGS+=" -I${NACLPORTS_INCLUDE}/glibc-compat"
+    NACLPORTS_LIBS+=" -lglibc-compat"
+  fi
+}
+
 #
 # Attempt to download a file from a given URL
 # $1 - URL to fetch
@@ -542,9 +572,13 @@ Fetch() {
 }
 
 
-Check() {
-  # verify sha1 checksum for tarball
-  if echo "${SHA1} *${ARCHIVE_NAME}" | "${SHA1CHECK}"; then
+#
+# verify the sha1 checksum of given file
+# $1 - filename
+# $2 - checksum (as hex string)
+#
+CheckHash() {
+  if echo "$2 *$1" | "${SHA1CHECK}"; then
     return 0
   else
     return 1
@@ -577,13 +611,14 @@ ChangeDir() {
 
 
 Remove() {
-  local NAME="$1"
-  if VerifyPath "${NAME}"; then
-    rm -rf "${NAME}"
-  else
-    echo "Remove called with bad path."
-    exit -1
-  fi
+  for filename in $*; do
+    if VerifyPath "${filename}"; then
+      rm -rf "${filename}"
+    else
+      echo "Remove called with bad path: ${filename}"
+      exit -1
+    fi
+  done
 }
 
 
@@ -613,54 +648,41 @@ MakeDirs() {
 }
 
 
-PublishByArchForDevEnv() {
-  MakeDir "${PUBLISH_DIR}"
-  local ARCH_DIR=${PUBLISH_DIR}/${NACL_ARCH}
-  MakeDir "${ARCH_DIR}"
-  # TODO(bradnelson): Drop this once all pors that have executables list them
-  # explicitly (required for pnacl to work right anyhow).
-  if [ "${EXECUTABLES:-}" != "" ]; then
-    local executables="${EXECUTABLES}"
-  elif [ "${OS_NAME}" != "Darwin" ]; then
-    # -executable is not supported on BSD and -perm +nn is not
-    # supported on linux
-    local executables=$(find . -type f -executable -not -path "*/.git/*")
-  else
-    local executables=$(find . -type f -perm +u+x -not -path "*/.git/*")
-  fi
-  for nexe in ${executables}; do
-    local name=$(basename ${nexe})
-    name=${name/%.nexe/}
-    name=${name/%.pexe/}
-    LogExecute cp "${nexe}" "${ARCH_DIR}/${name}"
-    # TODO(bradnelson): Do something prettier.
-    if [[ "$(head -c 2 ${nexe})" != "#!" && \
-          "$(head -c 2 ${nexe})" != "# " && \
-          "${nexe}" != *.so && \
-          "${nexe}" != *.so.* && \
-          "${nexe}" != *.txt && \
-          "${nexe}" != config.status ]]; then
-      # Strip non-scripts
-      LogExecute "${NACLSTRIP}" "${ARCH_DIR}/${name}"
+#
+# Assemble a multi-arch version for use in the devenv packaged app.
+#
+#
+PublishMultiArch() {
+  local binary=$1
+  local target=$2
 
-      # Run create_nmf for non-scripts.
-      # Stage libraries for toolchains that support dynamic linking.
-      if [[ "${TOOLCHAIN}" = "glibc" || "${TOOLCHAIN}" = "bionic" ]]; then
-        pushd "${ARCH_DIR}"
-        # Create a temporary name ending in .nexe so create_nmf does the right
-        # thing.
-        LogExecute cp "${name}" tmp.nexe
-        LogExecute python "${NACL_SDK_ROOT}/tools/create_nmf.py" \
-          tmp.nexe -s . -o tmp.nmf ${PUBLISH_CREATE_NMF_ARGS:-}
-        LogExecute rm tmp.nexe
-        LogExecute rm tmp.nmf
-        popd
-      fi
-    fi
-  done
-  ChangeDir "${ARCH_DIR}"
-  Remove "${ARCH_DIR}.zip"
-  LogExecute zip -r "${ARCH_DIR}.zip" .
+  if [ $# -gt 2 ]; then
+    local assembly_dir="${PUBLISH_DIR}/$3"
+  else
+    local assembly_dir="${PUBLISH_DIR}"
+  fi
+
+  local platform_dir="${assembly_dir}/_platform_specific/${NACL_ARCH}"
+  MakeDir ${platform_dir}
+  if [ "${NACL_ARCH}" = "pnacl" ]; then
+    # Add something to the per-arch directory there so the store will accept
+    # the app even if nothing else ends up there. This currently happens in
+    # the pnacl case, where there's nothing that's per architecture.
+    touch ${platform_dir}/MARKER
+
+    local exe="${assembly_dir}/${target}${NACL_EXEEXT}"
+    LogExecute ${PNACLFINALIZE} ${BUILD_DIR}/${binary} -o ${exe}
+    ChangeDir ${assembly_dir}
+    LogExecute python ${NACL_SDK_ROOT}/tools/create_nmf.py \
+        ${exe} -s . -o ${target}.nmf
+  else
+    local exe="${platform_dir}/${target}${NACL_EXEEXT}"
+    LogExecute cp ${BUILD_DIR}/${binary} ${exe}
+    ChangeDir ${assembly_dir}
+    LogExecute python ${NACL_SDK_ROOT}/tools/create_nmf.py --no-arch-prefix \
+        _platform_specific/*/${target}*${NACL_EXEEXT} \
+        -s . -o ${target}.nmf
+  fi
 }
 
 
@@ -721,7 +743,7 @@ SetupSDKBuildSystem() {
   export OUTBASE=${SRC_DIR}
   export CFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CFLAGS}"
   export CXXFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CXXFLAGS}"
-  export LDFLAGS=${NACLPORTS_LDFLAGS}
+  export LDFLAGS="${NACLPORTS_LDFLAGS} ${NACLPORTS_LIBS}"
   export NACL_PREFIX
   export NACL_PACKAGES_PUBLISH
   export NACL_SRC
@@ -780,14 +802,16 @@ SetupCrossEnvironment() {
   export CFLAGS=${NACLPORTS_CFLAGS}
   export CPPFLAGS=${NACLPORTS_CPPFLAGS}
   export CXXFLAGS=${NACLPORTS_CXXFLAGS}
-  export LDFLAGS=${NACLPORTS_LDFLAGS}
+  export LDFLAGS="${NACLPORTS_LDFLAGS} ${NACLPORTS_LIBS}"
   export ARFLAGS=${NACL_ARFLAGS}
   export AR_FLAGS=${NACL_ARFLAGS}
+  export LIBS=${LIBS:-${NACLPORTS_LIBS}}
 
   echo "CPPFLAGS=${CPPFLAGS}"
   echo "CFLAGS=${CFLAGS}"
   echo "CXXFLAGS=${CXXFLAGS}"
   echo "LDFLAGS=${LDFLAGS}"
+  echo "LIBS=${LIBS}"
 }
 
 GetRevision() {
@@ -811,15 +835,10 @@ GenerateManifest() {
     exit 1
   fi
 
-  if [ $# -gt 0 ]; then
-    local KEY="$(cat $1)"
-  else
-    local KEY=""
-  fi
   echo "Expanding ${SOURCE_FILE} > ${TARGET_DIR}/manifest.json"
   # Generate a manifest.json
   "${TEMPLATE_EXPAND}" "${SOURCE_FILE}" \
-    version=${REVISION} key="${KEY}" > ${TARGET_DIR}/manifest.json
+    version=${REVISION} $* > ${TARGET_DIR}/manifest.json
 }
 
 
@@ -840,6 +859,23 @@ FixupExecutablesList() {
 }
 
 
+VerifySharedLibraryOrder() {
+  if [ "${NACL_LIBC}" != "glibc" ]; then
+    return
+  fi
+  # Check that pthreads comes after nacl_io + nacl_spawn in the needed order.
+  # Pthreads has interception hooks that forward directly into glibc.
+  # If it gets loaded first, nacl_io doesn't get a chance to intercept.
+  for nexe in ${EXECUTABLES:-}; do
+    echo "Verifying shared library order for ${nexe}"
+    if ! OBJDUMP=${NACLOBJDUMP} ${TOOLS_DIR}/check_needed_order.py ${nexe}; then
+      echo "error: glibc shared library order check failed"
+      exit 1
+    fi
+  done
+}
+
+
 ######################################################################
 # Build Steps
 ######################################################################
@@ -855,11 +891,13 @@ PatchConfigSub() {
 
   for sub in ${CONFIG_SUB}; do
     if grep -q 'nacl)' "${sub}" /dev/null; then
-      echo "${CONFIG_SUB} supports NaCl"
-    else
-      echo "Patching ${sub}"
-      /bin/cp -f "${TOOLS_DIR}/config.sub" "${sub}"
+      if grep -q 'emscripten)' "${sub}" /dev/null; then
+        echo "${CONFIG_SUB} supports NaCl + emscripten"
+        continue
+      fi
     fi
+    echo "Patching ${sub}"
+    /bin/cp -f "${TOOLS_DIR}/config.sub" "${sub}"
   done
 }
 
@@ -878,7 +916,7 @@ DefaultPatchStep() {
   # TODO(sbc): migrate auto patching of config sub and configure
   # and remove this function.
 
-  if [ -z "${ARCHIVE_NAME:-}" ] && ! IsGitRepo; then
+  if [ -z "${URL:-}" ] && ! IsGitRepo; then
     return
   fi
 
@@ -908,6 +946,14 @@ DefaultConfigureStep() {
     return
   fi
 
+  if [ "${TOOLCHAIN}" = "emscripten" ]; then
+    # This is a variable the emconfigure sets, presumably to make configure
+    # tests do the right thing.
+    # TODO(sbc): We should probably call emconfigure instead of trying to
+    # duplicate its functionality.
+    export EMMAKEN_JUST_CONFIGURE=1
+  fi
+
   if IsAutoconfProject; then
     ConfigureStep_Autoconf
   elif IsCMakeProject; then
@@ -923,8 +969,17 @@ ConfigureStep_Autoconf() {
 
   SetupCrossEnvironment
 
+  # Without this autoconf builds will use the same CFLAGS/LDFLAGS for host
+  # builds as NaCl builds and not all the flags we use are supported by the
+  # host compiler, which could be an older version of gcc
+  # (e.g. -fdiagnostics-color=auto).
+  export CFLAGS_FOR_BUILD=""
+  export LDFLAGS_FOR_BUILD=""
+
   local conf_host=${NACL_CROSS_PREFIX}
-  if [ "${NACL_ARCH}" = "pnacl" -o "${NACL_ARCH}" = "emscripten" ]; then
+  # TODO(gdeepti): Investigate whether emscripten accurately fits this case for
+  # long term usage.
+  if [[ ${TOOLCHAIN} == pnacl ]]; then
     # The PNaCl tools use "pnacl-" as the prefix, but config.sub
     # does not know about "pnacl".  It only knows about "le32-nacl".
     # Unfortunately, most of the config.subs here are so old that
@@ -973,6 +1028,7 @@ ConfigureStep_CMake() {
   SetupCrossPaths
   export CFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CFLAGS}"
   export CXXFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CXXFLAGS}"
+  export LDFLAGS="${NACLPORTS_LDFLAGS} ${NACLPORTS_LIBS}"
   LogExecute cmake "${SRC_DIR}" \
            -DCMAKE_TOOLCHAIN_FILE=${TOOLS_DIR}/XCompile-nacl.cmake \
            -DNACLAR=${NACLAR} \
@@ -1025,7 +1081,8 @@ DefaultPythonModuleBuildStep() {
   export NACL_BUILD_TREE=${NACL_DEST_PYROOT}
   export CFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CFLAGS}"
   export CXXFLAGS="${NACLPORTS_CPPFLAGS} ${NACLPORTS_CXXFLAGS}"
-  export LDFLAGS=${NACLPORTS_LDFLAGS}
+  export LDFLAGS="${NACLPORTS_LDFLAGS} ${NACLPORTS_LIBS}"
+  export LIBS="${NACLPORTS_LIBS}"
   LogExecute "${NACL_HOST_PYTHON}" setup.py \
     ${NACL_PYSETUP_ARGS:-} \
     install "--prefix=${NACL_DEST_PYROOT}"
@@ -1088,38 +1145,29 @@ DefaultPythonModuleInstallStep() {
 # $1 - Execuatable file (.nexe)
 #
 Validate() {
-  if [ "${NACL_ARCH}" = "pnacl" -o "${NACL_ARCH}" = "emscripten" ]; then
+  local binary=$1
+
+  if [[ ${NACL_ARCH} = pnacl || ${NACL_ARCH} = emscripten ]]; then
+    if [[ ! -f $binary ]]; then
+      echo "error: missing binary: ${binary}"
+      exit 1
+    fi
     return
   fi
 
-  # new SDKs have a single validator called ncval whereas older (<= 28)
-  # have a different validator for each arch.
-  if [ -f "${NACL_SDK_ROOT}/tools/ncval" ]; then
-    NACL_VALIDATE="${NACL_SDK_ROOT}/tools/ncval"
-  elif [ "${NACL_ARCH}" = "arm" ]; then
-    NACL_VALIDATE="${NACL_SDK_ROOT}/tools/ncval_arm"
-  elif [ "${NACL_ARCH}" = "x86_64" ]; then
-    NACL_VALIDATE="${NACL_SDK_ROOT}/tools/ncval_x86_64 --errors"
-  else
-    NACL_VALIDATE="${NACL_SDK_ROOT}/tools/ncval_x86_32"
-  fi
-  LogExecute "${NACL_VALIDATE}" "$@"
-  if [ $? != 0 ]; then
+  LogExecute "${NACL_SDK_ROOT}/tools/ncval" "${binary}"
+  if [[ $? != 0 ]]; then
     exit 1
   fi
 }
 
 
 #
-# PostBuildStep by default will validae (using ncval) any executables
+# PostBuildStep by default will validate (using ncval) any executables
 # specified in the ${EXECUTABLES} as well as create wrapper scripts
 # for running them in sel_ldr.
 #
 DefaultPostBuildStep() {
-  if [ "${NACL_ARCH}" = "emscripten" ]; then
-    return
-  fi
-
   if [ -z "${EXECUTABLES}" ]; then
     return
   fi
@@ -1142,11 +1190,13 @@ DefaultPostBuildStep() {
     # of the script is the same as the name of the executable, either without
     # any extension or with the .sh extension.
     if [[ ${nexe} == *${NACL_EXEEXT} && ! -d ${nexe%%${NACL_EXEEXT}} ]]; then
-      WriteSelLdrScript "${nexe%%${NACL_EXEEXT}}" "$(basename ${nexe})"
+      WriteLauncherScript "${nexe%%${NACL_EXEEXT}}" "$(basename ${nexe})"
     else
-      WriteSelLdrScript "${nexe}.sh" "$(basename ${nexe})"
+      WriteLauncherScript "${nexe}.sh" "$(basename ${nexe})"
     fi
   done
+
+  VerifySharedLibraryOrder
 }
 
 
@@ -1167,10 +1217,10 @@ RunSelLdrCommand() {
     local SCRIPT_32=$1_32.sh
     local SCRIPT_64=$1_64.sh
     shift
-    TranslateAndWriteSelLdrScript "${PEXE}" x86-32 "${NEXE_32}" "${SCRIPT_32}"
+    TranslateAndWriteLauncherScript "${PEXE}" x86-32 "${NEXE_32}" "${SCRIPT_32}"
     echo "[sel_ldr x86-32] ${SCRIPT_32} $*"
     "./${SCRIPT_32}" "$@"
-    TranslateAndWriteSelLdrScript "${PEXE}" x86-64 "${NEXE_64}" "${SCRIPT_64}"
+    TranslateAndWriteLauncherScript "${PEXE}" x86-64 "${NEXE_64}" "${SCRIPT_64}"
     echo "[sel_ldr x86-64] ${SCRIPT_64} $*"
     "./${SCRIPT_64}" "$@"
   else
@@ -1183,7 +1233,7 @@ RunSelLdrCommand() {
     fi
 
     local SCRIPT=${nexe}.sh
-    WriteSelLdrScript "${SCRIPT}" ${basename}
+    WriteLauncherScript "${SCRIPT}" ${basename}
     shift
     echo "[sel_ldr] ${SCRIPT} $*"
     "./${SCRIPT}" "$@"
@@ -1196,57 +1246,78 @@ RunSelLdrCommand() {
 # $1 - Script name
 # $2 - Nexe name
 #
-WriteSelLdrScript() {
+WriteLauncherScript() {
+  local script=$1
+  local binary=$2
   if [ "${SKIP_SEL_LDR_TESTS}" = "1" ]; then
+    return
+  fi
+
+  if [ "${TOOLCHAIN}" = "emscripten" ]; then
+    local node=node
+    if ! which node > /dev/null ; then
+      node=nodejs
+      if ! which nodejs > /dev/null ; then
+        echo "Failed to find 'node' or 'nodejs' in PATH"
+        exit 1
+      fi
+    fi
+    cat > "$script" <<HERE
+#!/bin/bash
+
+SCRIPT_DIR=\$(dirname "\${BASH_SOURCE[0]}")
+NODE=${node}
+
+cd "\${SCRIPT_DIR}"
+exec \${NODE} $binary "\$@"
+HERE
+    chmod 750 "$script"
+    echo "Wrote script $script -> $binary"
     return
   fi
 
   if [ "${OS_NAME}" = "Cygwin" ]; then
     local LOGFILE=nul
-    local NACL_IRT_PATH=$(cygpath -m "${NACL_IRT}")
   else
     local LOGFILE=/dev/null
-    local NACL_IRT_PATH=${NACL_IRT}
   fi
 
   if [ "${NACL_LIBC}" = "glibc" ]; then
-    cat > "$1" <<HERE
+    cat > "$script" <<HERE
 #!/bin/bash
-export NACLLOG=${LOGFILE}
-
 SCRIPT_DIR=\$(dirname "\${BASH_SOURCE[0]}")
-SEL_LDR=${NACL_SEL_LDR}
-IRT=${NACL_IRT_PATH}
+if [ \$(uname -s) = CYGWIN* ]; then
+  SCRIPT_DIR=\$(cygpath -m \${SCRIPT_DIR})
+fi
+NACL_SDK_ROOT=${NACL_SDK_ROOT}
+
 NACL_SDK_LIB=${NACL_SDK_LIB}
 LIB_PATH_DEFAULT=${NACL_SDK_LIBDIR}:${NACLPORTS_LIBDIR}
 LIB_PATH_DEFAULT=\${LIB_PATH_DEFAULT}:\${NACL_SDK_LIB}:\${SCRIPT_DIR}
 SEL_LDR_LIB_PATH=\${SEL_LDR_LIB_PATH}:\${LIB_PATH_DEFAULT}
 
-"\${SEL_LDR}" -E TERM=$TERM -a -B "\${IRT}" -- \\
-    "\${NACL_SDK_LIB}/runnable-ld.so" --library-path "\${SEL_LDR_LIB_PATH}" \\
-    "\${SCRIPT_DIR}/$2" "\$@"
+"\${NACL_SDK_ROOT}/tools/sel_ldr.py" -p --library-path "\${SEL_LDR_LIB_PATH}" \
+    -- "\${SCRIPT_DIR}/$binary" "\$@"
 HERE
   else
-    cat > "$1" <<HERE
+    cat > "$script" <<HERE
 #!/bin/bash
-export NACLLOG=${LOGFILE}
-
 SCRIPT_DIR=\$(dirname "\${BASH_SOURCE[0]}")
 if [ \$(uname -s) = CYGWIN* ]; then
   SCRIPT_DIR=\$(cygpath -m \${SCRIPT_DIR})
 fi
-SEL_LDR=${NACL_SEL_LDR}
-IRT=${NACL_IRT_PATH}
+NACL_SDK_ROOT=${NACL_SDK_ROOT}
 
-"\${SEL_LDR}" -E TERM=\${TERM} -a -B "\${IRT}" -- "\${SCRIPT_DIR}/$2" "\$@"
+"\${NACL_SDK_ROOT}/tools/sel_ldr.py" -p -- "\${SCRIPT_DIR}/$binary" "\$@"
 HERE
   fi
-  chmod 750 "$1"
-  echo "Wrote script $1 -> $2"
+
+  chmod 750 "$script"
+  echo "Wrote script $script -> $binary"
 }
 
 
-TranslateAndWriteSelLdrScript() {
+TranslateAndWriteLauncherScript() {
   local PEXE=$1
   local PEXE_FINAL=$1_final.pexe
   local ARCH=$2
@@ -1260,7 +1331,7 @@ TranslateAndWriteSelLdrScript() {
   if [ "${PEXE_FINAL}" -nt "${NEXE}" ]; then
     "${TRANSLATOR}" "${PEXE_FINAL}" -arch "${ARCH}" -o "${NEXE}"
   fi
-  WriteSelLdrScriptForPNaCl "${SCRIPT}" $(basename "${NEXE}") "${ARCH}"
+  WriteLauncherScriptPNaCl "${SCRIPT}" $(basename "${NEXE}") "${ARCH}"
 }
 
 
@@ -1270,34 +1341,16 @@ TranslateAndWriteSelLdrScript() {
 # $2 - Nexe name
 # $3 - sel_ldr architecture
 #
-WriteSelLdrScriptForPNaCl() {
+WriteLauncherScriptPNaCl() {
   local script_name=$1
   local nexe_name=$2
   local arch=$3
-  local nacl_sel_ldr="no-sel-ldr"
-  local irt_core="no-irt-core"
-  case ${arch} in
-    x86-32)
-      nacl_sel_ldr="${NACL_SEL_LDR_X8632}"
-      irt_core="${NACL_IRT_X8632}"
-      ;;
-    x86-64)
-      nacl_sel_ldr="${NACL_SEL_LDR_X8664}"
-      irt_core="${NACL_IRT_X8664}"
-      ;;
-    *)
-      echo "error: No sel_ldr for ${arch}"
-      exit 1
-  esac
   cat > "${script_name}" <<HERE
 #!/bin/bash
-export NACLLOG=/dev/null
-
 SCRIPT_DIR=\$(dirname "\${BASH_SOURCE[0]}")
-SEL_LDR=${nacl_sel_ldr}
-IRT=${irt_core}
+NACL_SDK_ROOT="${NACL_SDK_ROOT}"
 
-"\${SEL_LDR}" -a -B "\${IRT}" -- "\${SCRIPT_DIR}/${nexe_name}" "\$@"
+"\${NACL_SDK_ROOT}/tools/sel_ldr.py" -p -- "\${SCRIPT_DIR}/${nexe_name}" "\$@"
 HERE
   chmod 750 "${script_name}"
   echo "Wrote script ${PWD}/${script_name}"
@@ -1413,29 +1466,6 @@ PackageStep() {
 }
 
 
-ZipPublishDir() {
-  # If something exists in the publish directory, zip it for download by mingn.
-  if [ "${NACLPORTS_QUICKBUILD}" = "1" ]; then
-    return
-  fi
-
-  if [ ! -d "${PUBLISH_DIR}" ]; then
-    return
-  fi
-
-  # If an arch specfic zip already exists (e.g. from PublishByArchForDevEnv)
-  # then skip supping the whole publish dir
-  if [ -f "${PUBLISH_DIR}/${NACL_ARCH}.zip" ]; then
-    return
-  fi
-
-  # Remove existing zip as it may contain only some architectures.
-  Remove "${PUBLISH_DIR}.zip"
-  ChangeDir "${PUBLISH_DIR}"
-  LogExecute zip -rq "${PUBLISH_DIR}.zip" ./
-}
-
-
 PackageInstall() {
   RunDownloadStep
   RunPatchStep
@@ -1446,7 +1476,6 @@ PackageInstall() {
   RunInstallStep
   RunPublishStep
   RunPostInstallTestStep
-  ZipPublishDir
   PackageStep
 }
 
@@ -1482,7 +1511,6 @@ RunStep() {
     fi
     ChangeDir "${DIR}"
   fi
-  ArchiveName
   # Step functions are run in sub-shell so that they are independent
   # from each other.
   ( ${STEP_FUNCTION} )
@@ -1558,8 +1586,6 @@ RunPublishStep()    {
 # These functions are called when this script is imported to do
 # any essential checking/setup operations.
 ######################################################################
-CheckToolchain
-CheckPatchVersion
 PatchSpecsFile
 InjectSystemHeaders
 InstallConfigSite

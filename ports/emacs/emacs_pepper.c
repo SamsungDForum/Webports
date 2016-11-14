@@ -4,6 +4,9 @@
  * found in the LICENSE file.
  */
 
+// TODO(bradnelson): Find a better workaround.
+#define NACL_SKIP_GETOPT
+
 #include "nacl_main.h"
 
 // Some things that Lisp.h needs:
@@ -12,10 +15,8 @@
 #include <errno.h>
 #include <sys/file.h>
 #include <sys/time.h>
-#include <unistd.h>
 
 #include "lisp.h"
-
 
 // Add some functions for use in the debugger to print out the value
 // of a lisp object.
@@ -29,25 +30,21 @@ char* whatis(Lisp_Object object) {
   if (STRINGP(object)) {
     snprintf(debug_print_buf, 80, "String %s", SSDATA(object));
     return debug_print_buf;
-  }
-  else if (INTEGERP(object)) {
+  } else if (INTEGERP(object)) {
     int x = XINT(object);
     snprintf(debug_print_buf, 80, "Number %d", x);
     return debug_print_buf;
-  }
-  else if (FLOATP(object)) {
+  } else if (FLOATP(object)) {
     struct Lisp_Float* floater = XFLOAT(object);
     return "It's a float number!";
-  }
-  else if (Qnil == object)
+  } else if (Qnil == object)
     return "It's a lisp null";
   else if (Qt == object)
     return "It's a lisp 't'";
   else if (SYMBOLP(object)) {
     snprintf(debug_print_buf, 80, "Symbol named %s", SYMBOL_NAME(object));
     return debug_print_buf;
-  }
-  else if (CONSP(object))
+  } else if (CONSP(object))
     return "It's a list!";
   else if (MISCP(object))
     return "It's a lisp misc!";
@@ -58,7 +55,7 @@ char* whatis(Lisp_Object object) {
 }
 
 // The special NaCl entry point into emacs.
-extern int nacl_emacs_main(int argc, char *argv[]);
+extern int nacl_emacs_main(int argc, char* argv[]);
 
 int nacl_main(int argc, char* argv[]) {
   if (nacl_startup_untar(argv[0], "emacs.tar", "/"))

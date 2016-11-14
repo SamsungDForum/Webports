@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from mock import patch, Mock
 import unittest
 
 from naclports import error
@@ -13,10 +12,12 @@ NAME=foo
 VERSION=0.1
 '''
 
+
 class TestPackage(unittest.TestCase):
-  def testValidLibcDisabled(self):
+
+  def testValidLibcDisabled(self):  # pylint: disable=no-self-use
     pkg = package.Package()
-    pkg.ParseInfo(test_info + 'DISABLED_LIBC=(newlib glibc bionic)')
+    pkg.ParseInfo(test_info + 'DISABLED_LIBC=(newlib glibc)')
 
   def testInvalidLibcDisabled(self):
     pkg = package.Package()
@@ -24,16 +25,16 @@ class TestPackage(unittest.TestCase):
     with self.assertRaisesRegexp(error.Error, 'invalid libc: clang-newlib'):
       pkg.ParseInfo(test_info + 'DISABLED_LIBC=(clang-newlib)')
 
-  def testValidToolchainDisabled(self):
+  def testValidToolchainDisabled(self):  # pylint: disable=no-self-use
     pkg = package.Package()
-    pkg.ParseInfo(test_info + 'DISABLED_TOOLCHAIN=(newlib glibc clang-newlib)')
+    pkg.ParseInfo(test_info + 'DISABLED_TOOLCHAIN=(pnacl glibc clang-newlib)')
 
   def testInvalidToolchainDisabled(self):
     pkg = package.Package()
     with self.assertRaisesRegexp(error.Error, 'invalid toolchain: foo'):
       pkg.ParseInfo(test_info + 'DISABLED_TOOLCHAIN=(foo)')
 
-  def testValidArchDisabled(self):
+  def testValidArchDisabled(self):  # pylint: disable=no-self-use
     pkg = package.Package()
     pkg.ParseInfo(test_info + 'DISABLED_ARCH=(arm i686 x86_64)')
 

@@ -2,7 +2,6 @@
 # Copyright (c) 2013 The Native Client Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
 """Manage partitioning of port builds.
 
 Download historical data from the naclports builders, and use it to
@@ -11,7 +10,7 @@ about the same amount of time.
 
 Example use:
 
-    $ ./partition.py -b linux-newlib-
+    $ ./partition.py -b linux-clang-
 
     builder 0 (total: 2786)
       bzip2
@@ -59,13 +58,13 @@ import urllib2
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
-TOOLCHAINS = ('bionic', 'newlib', 'glibc', 'pnacl')
+TOOLCHAINS = ('bionic', 'clang-newlib', 'glibc', 'pnacl')
 
 sys.path.append(os.path.join(ROOT_DIR, 'lib'))
 
 import naclports
 import naclports.source_package
-from naclports import Trace
+from naclports.util import LogVerbose
 
 
 class Error(naclports.Error):
@@ -91,29 +90,30 @@ def GetDependencies(projects):
 
 
 def DownloadDataFromBuilder(builder, build):
-  max_tries = 10
+  max_tries = 30
 
   for _ in xrange(max_tries):
     url = 'http://build.chromium.org/p/client.nacl.ports/json'
     url += '/builders/%s/builds/%d' % (builder, build)
-    Trace('Downloading %s' % url)
+    LogVerbose('Downloading %s' % url)
     f = urllib2.urlopen(url)
     try:
       data = json.loads(f.read())
       text = data['text']
       if text == ['build', 'successful']:
-        Trace('  Success!')
+        LogVerbose('  Success!')
         return data
-      Trace('  Not successful, trying previous build.')
+      LogVerbose('  Not successful, trying previous build.')
     finally:
       f.close()
     build -= 1
 
   raise Error('Unable to find a successful build:\nBuilder: %s\nRange: [%d, %d]'
-      % (builder, build - max_tries, build))
+              % (builder, build - max_tries, build))
 
 
 class Project(object):
+
   def __init__(self, name):
     self.name = name
     self.time = 0
@@ -134,6 +134,7 @@ class Project(object):
 
 
 class Projects(object):
+
   def __init__(self):
     self.projects = []
     self.project_map = {}
@@ -168,6 +169,7 @@ class Projects(object):
 
 
 class ProjectTimes(object):
+
   def __init__(self):
     self.project_names = set()
     self.projects = []
@@ -230,7 +232,7 @@ def LoadCanned(parts):
   partitions = []
   partition = []
   input_file = os.path.join(SCRIPT_DIR, 'partition%d.txt' % parts)
-  Trace("LoadCanned: %s" % input_file)
+  LogVerbose("LoadCanned: %s" % input_file)
   with open(input_file) as fh:
     for line in fh:
       if line.strip()[0] == '#':
@@ -246,14 +248,14 @@ def LoadCanned(parts):
   # Return a small set of packages for testing.
   if os.environ.get('TEST_BUILDBOT'):
     partitions[0] = [
+        'corelibs',
         'glibc-compat',
         'nacl-spawn',
         'ncurses',
         'readline',
         'libtar',
         'zlib',
-        'lua5.2',
-        'lua-ppapi',
+        'lua',
     ]
   return partitions
 
@@ -302,7 +304,7 @@ def GetCanned(index, parts):
   assert index >= 0 and index < parts, [index, parts]
   partitions = LoadCanned(parts)
   partitions = FixupCanned(partitions)
-  Trace("Found %d packages for shard %d" % (len(partitions[index]), index))
+  LogVerbose("Found %d packages for shard %d" % (len(partitions[index]), index))
   return partitions[index]
 
 
@@ -315,16 +317,16 @@ def main(args):
   parser.add_argument('-t', '--print-canned', type=int,
                       help='Print a the canned partition list and exit.')
   parser.add_argument('-b', '--bot-prefix', help='builder name prefix.',
-                      default='linux-newlib-')
+                      default='linux-clang-')
   parser.add_argument('-n', '--num-bots',
                       help='Number of builders on the waterfall to collect '
                       'data from or to print a canned partition for.',
-                      type=int, default=3)
+                      type=int, default=5)
   parser.add_argument('-p', '--num-parts',
                       help='Number of parts to partition things into '
                       '(this will differ from --num-bots when changing the '
                       'number of shards).',
-                      type=int, default=3)
+                      type=int, default=5)
   parser.add_argument('--build-number', help='Builder number to look at for '
                       'historical data on build times.', type=int, default=-1)
   options = parser.parse_args(args)
@@ -345,7 +347,7 @@ def main(args):
   projects = Projects()
   for bot in range(options.num_bots):
     bot_name = '%s%d' % (options.bot_prefix, bot)
-    Trace('Attempting to add data from "%s"' % bot_name)
+    LogVerbose('Attempting to add data from "%s"' % bot_name)
     projects.AddDataFromBuilder(bot_name, options.build_number)
   projects.PostProcessDeps()
 

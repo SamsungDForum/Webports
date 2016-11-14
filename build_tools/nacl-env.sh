@@ -9,7 +9,7 @@
 # environment variables:
 #
 # $NACL_ARCH - i386, x86_64, arm or pnacl.  Default: x86_64
-# $TOOLCHAIN - bionic, newlib, glibc or pnacl.  Default: newlib
+# $TOOLCHAIN - bionic, clang-newlib, glibc or pnacl.  Default: pnacl
 #
 # To import these variables into your environment do:
 # $ . nacl-env.sh
@@ -63,6 +63,8 @@ if [ "${TOOLCHAIN}" = "bionic" ]; then
   DEFAULT_ARCH=arm
 elif [ "${TOOLCHAIN}" = "pnacl" ]; then
   DEFAULT_ARCH=pnacl
+elif [ "${TOOLCHAIN}" = "emscripten" ]; then
+  DEFAULT_ARCH=emscripten
 else
   if [ "${HOST_IS_32BIT}" = "1" ]; then
     DEFAULT_ARCH=i686
@@ -74,14 +76,8 @@ fi
 # Default value for NACL_ARCH
 NACL_ARCH=${NACL_ARCH:-${DEFAULT_ARCH}}
 
-# Default Value for TOOLCHAIN, taking into account legacy
-# NACL_GLIBC varible.
-if [ "${NACL_GLIBC:-}" = "1" ]; then
-  echo "WARNING: \$NACL_GLIBC is deprecated (use \$TOOLCHAIN=glibc instead)"
-  TOOLCHAIN=${TOOLCHAIN:-glibc}
-else
-  TOOLCHAIN=${TOOLCHAIN:-newlib}
-fi
+# Default Value for TOOLCHAIN
+TOOLCHAIN=${TOOLCHAIN:-pnacl}
 
 # Check NACL_ARCH
 if [ ${NACL_ARCH} != "i686" -a ${NACL_ARCH} != "x86_64" -a \
@@ -92,18 +88,18 @@ if [ ${NACL_ARCH} != "i686" -a ${NACL_ARCH} != "x86_64" -a \
 fi
 
 # Check TOOLCHAIN
-if [ ${TOOLCHAIN} != "newlib" -a ${TOOLCHAIN} != "pnacl" -a \
+if [ ${TOOLCHAIN} != "pnacl" -a \
      ${TOOLCHAIN} != "glibc" -a ${TOOLCHAIN} != "bionic" -a \
-     ${TOOLCHAIN} != "clang-newlib" ]; then
+     ${TOOLCHAIN} != "clang-newlib" -a ${TOOLCHAIN} != "emscripten" ]; then
   echo "Unknown value for TOOLCHAIN: '${TOOLCHAIN}'" 1>&2
   exit -1
 fi
 
-if [ "${NACL_ARCH}" = "emscripten" -a -z "${PEPPERJS_SRC_ROOT:-}" ]; then
+if [ "${NACL_ARCH}" = "emscripten" -a -z "${EMSCRIPTEN:-}" ]; then
   echo "-------------------------------------------------------------------"
-  echo "PEPPERJS_SRC_ROOT is unset."
+  echo "EMSCRIPTEN is unset."
   echo "This environment variable needs to be pointed at some version of"
-  echo "the pepper.js repository."
+  echo "the emscripten repository."
   echo "NOTE: set this to an absolute path."
   echo "-------------------------------------------------------------------"
   exit -1
@@ -121,11 +117,13 @@ if [ "${TOOLCHAIN}" = "glibc" ]; then
     echo "PNaCl is not supported by the glibc toolchain" 1>&2
     exit -1
   fi
-  if [ "${NACL_ARCH}" = "arm" ]; then
-    echo "ARM is not supported by the glibc toolcahin" 1>&2
+  NACL_LIBC=glibc
+elif [ "${TOOLCHAIN}" = "emscripten" ]; then
+  if [ "${NACL_ARCH}" != "emscripten" ]; then
+    echo "emscripten does not support this architecture: ${NACL_ARCH}" 1>&2
     exit -1
   fi
-  NACL_LIBC=glibc
+  NACL_LIBC=emscripten
 elif [ "${TOOLCHAIN}" = "bionic" ]; then
   if [ "${NACL_ARCH}" != "arm" ]; then
     echo "Bionic toolchain only supports ARM" 1>&2
@@ -145,25 +143,12 @@ else
   export NACL_ARCH_ALT=${NACL_ARCH}
 fi
 
-if [ ${NACL_ARCH} = "i686" ]; then
-  readonly NACL_SEL_LDR=${NACL_SDK_ROOT}/tools/sel_ldr_x86_32
-  readonly NACL_IRT=${NACL_SDK_ROOT}/tools/irt_core_x86_32.nexe
-elif [ ${NACL_ARCH} = "x86_64" ]; then
-  readonly NACL_SEL_LDR=${NACL_SDK_ROOT}/tools/sel_ldr_x86_64
-  readonly NACL_IRT=${NACL_SDK_ROOT}/tools/irt_core_x86_64.nexe
-elif [ ${NACL_ARCH} = "pnacl" ]; then
-  readonly NACL_SEL_LDR_X8632=${NACL_SDK_ROOT}/tools/sel_ldr_x86_32
-  readonly NACL_IRT_X8632=${NACL_SDK_ROOT}/tools/irt_core_x86_32.nexe
-  readonly NACL_SEL_LDR_X8664=${NACL_SDK_ROOT}/tools/sel_ldr_x86_64
-  readonly NACL_IRT_X8664=${NACL_SDK_ROOT}/tools/irt_core_x86_64.nexe
-fi
-
 # NACL_CROSS_PREFIX is the prefix of the executables in the
 # toolchain's "bin" directory. For example: i686-nacl-<toolname>.
 if [ ${NACL_ARCH} = "pnacl" ]; then
   NACL_CROSS_PREFIX=pnacl
 elif [ ${NACL_ARCH} = "emscripten" ]; then
-  NACL_CROSS_PREFIX=em
+  NACL_CROSS_PREFIX=emscripten
 else
   NACL_CROSS_PREFIX=${NACL_ARCH}-nacl
 fi
@@ -197,6 +182,7 @@ InitializeNaClGccToolchain() {
   NACLREADELF=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-readelf
   NACLSTRINGS=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-strings
   NACLSTRIP=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-strip
+  NACLOBJDUMP=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-objdump
   NACL_EXEEXT=".nexe"
 
   if [ ${NACL_ARCH} = "arm" ]; then
@@ -225,19 +211,7 @@ InitializeNaClGccToolchain() {
 }
 
 InitializeEmscriptenToolchain() {
-  local TC_ROOT=${NACL_SDK_ROOT}/toolchain
-  local EM_ROOT=${PEPPERJS_SRC_ROOT}/emscripten
-
-  # The PNaCl toolchain moved in pepper_31.  Check for
-  # the existence of the old folder first and use that
-  # if found.
-  if [ -d "${TC_ROOT}/${OS_SUBDIR}_x86_pnacl" ]; then
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_x86_pnacl/newlib
-  elif [ -d "${TC_ROOT}/${OS_SUBDIR}_pnacl/newlib" ]; then
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_pnacl/newlib
-  else
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_pnacl
-  fi
+  local EM_ROOT=${EMSCRIPTEN}
 
   readonly NACL_TOOLCHAIN_ROOT=${EM_ROOT}
   readonly NACL_BIN_PATH=${EM_ROOT}
@@ -251,24 +225,10 @@ InitializeEmscriptenToolchain() {
   NACLSTRINGS=/bin/true
   NACLSTRIP=/bin/true
   NACL_EXEEXT=".js"
-
-  LLVM=${TC_ROOT}/bin
-
-  NACL_SDK_LIBDIR="${PEPPERJS_SRC_ROOT}/lib/${TOOLCHAIN}"
 }
 
 InitializePNaClToolchain() {
-  local TC_ROOT=${NACL_SDK_ROOT}/toolchain
-  # The PNaCl toolchain moved in pepper_31.  Check for
-  # the existence of the old folder first and use that
-  # if found.
-  if [ -d "${TC_ROOT}/${OS_SUBDIR}_x86_pnacl" ]; then
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_x86_pnacl/newlib
-  elif [ -d "${TC_ROOT}/${OS_SUBDIR}_pnacl/newlib" ]; then
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_pnacl/newlib
-  else
-    TC_ROOT=${TC_ROOT}/${OS_SUBDIR}_pnacl
-  fi
+  local TC_ROOT=${NACL_SDK_ROOT}/toolchain/${OS_SUBDIR}_pnacl
 
   readonly NACL_TOOLCHAIN_ROOT=${NACL_TOOLCHAIN_ROOT:-${TC_ROOT}}
   readonly NACL_BIN_PATH=${NACL_TOOLCHAIN_ROOT}/bin
@@ -285,8 +245,16 @@ InitializePNaClToolchain() {
     NACLSTRIP=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-strip
     NACL_EXEEXT=".nexe"
     NACL_SDK_LIBDIR="${NACL_SDK_ROOT}/lib/${TOOLCHAIN}_${NACL_ARCH_ALT}"
+
+    if [ ${NACL_ARCH} = "arm" ]; then
+      local NACL_LIBDIR=arm-nacl/lib
+    elif [ ${NACL_ARCH} = "x86_64" ]; then
+      local NACL_LIBDIR=x86_64-nacl/lib64
+    else
+      local NACL_LIBDIR=x86_64-nacl/lib32
+    fi
   else
-    # TODO(sbc): figure our why we do not have a pnacl-string
+    # TODO(sbc): figure our why we do not have a pnacl-strings
     #NACLSTRINGS=${NACL_BIN_PATH}/pnacl-strings
     # until then use the host's strings tool
     # (used only by the cairo package)
@@ -301,7 +269,10 @@ InitializePNaClToolchain() {
     PNACL_OPT=${NACL_BIN_PATH}/${NACL_CROSS_PREFIX}-opt
 
     NACL_SDK_LIBDIR="${NACL_SDK_ROOT}/lib/${TOOLCHAIN}"
+    local NACL_LIBDIR=le32-nacl/lib
   fi
+
+  readonly NACL_SDK_LIB=${NACL_TOOLCHAIN_ROOT}/${NACL_LIBDIR}
 }
 
 NaClEnvExport() {
@@ -332,9 +303,9 @@ NACL_SDK_VERSION=$(${NACL_SDK_ROOT}/tools/getos.py --sdk-version)
 # As of version 33 the PNaCl C++ standard library is LLVM's libc++,
 # others use GCC's libstdc++.
 if [ "${TOOLCHAIN}" = "pnacl" -o "${TOOLCHAIN}" = "clang-newlib" ]; then
-  export NACL_CPP_LIB="c++"
+  export NACL_CXX_LIB="c++"
 else
-  export NACL_CPP_LIB="stdc++"
+  export NACL_CXX_LIB="stdc++"
 fi
 
 if [ "${NACL_DEBUG:-}" = "1" ]; then
@@ -352,21 +323,9 @@ if [ "${TOOLCHAIN}" = "glibc" ]; then
 fi
 
 if [ "${NACL_ARCH}" = "pnacl" ]; then
-  if [ -d ${NACL_TOOLCHAIN_ROOT}/le32-nacl ]; then
-    NACL_SDK_REVISION=$(${NACL_SDK_ROOT}/tools/getos.py --sdk-revision)
-    if [ "${NACL_SDK_VERSION}" -lt 40 ]; then
-      # pepper_39 shiped with le32-nacl/local in is default search path
-      readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/le32-nacl/local
-    else
-      readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/le32-nacl/usr
-    fi
-  else
-    # pre-pepper_39 used /usr/local
-    # TODO: remove this once pepper_39 is stable.
-    readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/usr/local
-  fi
+  readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/le32-nacl/usr
 elif [ "${NACL_ARCH}" = "emscripten" ]; then
-  readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/usr
+  readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/system/local
 else
   readonly NACL_PREFIX=${NACL_TOOLCHAIN_ROOT}/${NACL_CROSS_PREFIX}/usr
 fi

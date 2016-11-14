@@ -53,6 +53,8 @@ def IndexFromFile(filename):
 
 
 def GetCurrentIndex():
+  if not os.path.exists(DEFAULT_INDEX):
+    return PackageIndex('', '')
   return IndexFromFile(DEFAULT_INDEX)
 
 
@@ -66,7 +68,6 @@ class PackageIndex(object):
   required_keys = pkg_info.REQUIRED_KEYS + EXTRA_KEYS
 
   def __init__(self, filename, index_data):
-
     self.filename = filename
     self.packages = {}
     self.ParseIndex(index_data)
@@ -84,8 +85,8 @@ class PackageIndex(object):
       return False
     version = util.GetSDKVersion()
     if info['BUILD_SDK_VERSION'] != version:
-      util.Trace('Prebuilt package was built with different SDK version: '
-                 '%s vs %s' % (info['BUILD_SDK_VERSION'], version))
+      util.LogVerbose('Prebuilt package was built with different SDK version: '
+                      '%s vs %s' % (info['BUILD_SDK_VERSION'], version))
       return False
     return True
 
@@ -110,12 +111,11 @@ class PackageIndex(object):
       return
 
     for info_files in index_data.split('\n\n'):
-      info = pkg_info.ParsePkgInfo(info_files, self.filename,
-                                   self.valid_keys, self.required_keys)
+      info = pkg_info.ParsePkgInfo(info_files, self.filename, self.valid_keys,
+                                   self.required_keys)
       debug = info['BUILD_CONFIG'] == 'debug'
       config = configuration.Configuration(info['BUILD_ARCH'],
-                                           info['BUILD_TOOLCHAIN'],
-                                           debug)
+                                           info['BUILD_TOOLCHAIN'], debug)
       key = (info['NAME'], config)
       if key in self.packages:
         error.Error('package index contains duplicate: %s' % str(key))

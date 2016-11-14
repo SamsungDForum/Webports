@@ -7,13 +7,33 @@
 # until the installation is completed. Also, you cannot use features
 # which nacl_io does not support yet (e.g., pipes and sub-shells).
 
-# Setup environment once to get location of fixed things like coreutils.
 source /mnt/http/setup-environment
 
-/mnt/http/install-base-packages.sh
+marker=/var/lib/devenv_setup_complete
+if [[ ! -e $marker ]]; then
+  echo "Performing initial devenv setup"
+  if /mnt/http/install-base-packages.sh; then
+    mkdir -p /var/lib
+    touch $marker
+  else
+    echo "*** devenv setup failed ***"
+  fi
+fi
 
-# Setup environment again, to rescan the packages added.
-source /mnt/http/setup-environment
+# TODO(bradnelson): Drop this when we can install things in a more
+# normal location and when we include the git templates in the normal
+# location.
+# Disabling templatedir as our git package lacks a default template set.
+# Setting up a default git identity, since we lack /etc/passwd as
+# a fallback.
+# Setup default .gitconfig if it doesn't already exist.
+# Explictly use [[ ]] conditional here in case coreutils is missing.
+gitdirs=(/stamps/git*)
+if [[ ${#dirdirs[@]} -gt 0 && ! -e /home/user/.gitconfig ]]; then
+  git config --global init.templatedir ""
+  git config --global user.name "John Doe"
+  git config --global user.email "john.doe@foo.com"
+fi
 
 cd ${HOME}
 

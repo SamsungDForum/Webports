@@ -29,20 +29,31 @@ GS_MIRROR_URL = '%s%s/mirror' % (GS_URL, GS_BUCKET)
 # and tested against the pepper_canary release. To build aginst older
 # versions of the SDK use the one of the pepper_XX branches (or use
 # --skip-sdk-version-check).
-MIN_SDK_VERSION = 42
+MIN_SDK_VERSION = 46
 
 arch_to_pkgarch = {
-  'x86_64': 'x86-64',
-  'i686': 'i686',
-  'arm': 'arm',
-  'pnacl': 'pnacl',
+    'x86_64': 'x86-64',
+    'i686': 'i686',
+    'arm': 'arm',
+    'pnacl': 'pnacl',
+    'emscripten': 'emscripten',
 }
 
 # Inverse of arch_to_pkgarch
-pkgarch_to_arch = {v:k for k, v in arch_to_pkgarch.items()}
+pkgarch_to_arch = {v: k for k, v in arch_to_pkgarch.items()}
 
-verbose = False
+LOG_ERROR = 0
+LOG_WARN = 1
+LOG_INFO = 2
+LOG_VERBOSE = 3
+LOG_TRACE = 4
+
+ELF_MAGIC = '\x7fELF'
+PEXE_MAGIC = 'PEXE'
+
+log_level = LOG_INFO
 color_mode = 'auto'
+
 
 def Color(message, color):
   if termcolor and Color.enabled:
@@ -56,9 +67,27 @@ def CheckStdoutForColorSupport():
     Color.enabled = sys.stdout.isatty()
 
 
+def IsElfFile(filename):
+  if os.path.islink(filename):
+    return False
+  with open(filename) as f:
+    header = f.read(4)
+  return header == ELF_MAGIC
+
+
+def IsPexeFile(filename):
+  if os.path.islink(filename):
+    return False
+  with open(filename) as f:
+    header = f.read(4)
+  return header == PEXE_MAGIC
+
+
 def Memoize(f):
   """Memoization decorator for functions taking one or more arguments."""
+
   class Memo(dict):
+
     def __init__(self, f):
       super(Memo, self).__init__()
       self.f = f
@@ -73,13 +102,22 @@ def Memoize(f):
   return Memo(f)
 
 
-def SetVerbose(verbosity):
-  global verbose
-  verbose = verbosity
+def SetVerbose(enabled):
+  if enabled:
+    SetLogLevel(LOG_VERBOSE)
+  else:
+    SetLogLevel(LOG_INFO)
 
 
-def Log(message):
+def SetLogLevel(verbosity):
+  global log_level
+  log_level = verbosity
+
+
+def Log(message, verbosity=LOG_INFO):
   """Log a message to the console (stdout)."""
+  if log_level < verbosity:
+    return
   sys.stdout.write(str(message) + '\n')
   sys.stdout.flush()
 
@@ -89,7 +127,7 @@ def LogHeading(message, suffix=''):
   if Color.enabled:
     Log(Color(message, 'green') + suffix)
   else:
-    if verbose:
+    if log_level > LOG_WARN:
       # When running in verbose mode make sure heading standout
       Log('###################################################################')
       Log(message + suffix)
@@ -99,13 +137,15 @@ def LogHeading(message, suffix=''):
 
 
 def Warn(message):
-  Log('warning: ' + message)
+  Log('warning: ' + message, LOG_WARN)
 
 
 def Trace(message):
-  """Log a message to the console if running in verbose mode (-v)."""
-  if verbose:
-    Log(message)
+  Log(message, LOG_TRACE)
+
+
+def LogVerbose(message):
+  Log(message, LOG_VERBOSE)
 
 
 def FindInPath(command_name):
@@ -114,10 +154,9 @@ def FindInPath(command_name):
   Returns:
     Full path to executable.
   """
-  if os.name == 'nt':
+  extensions = ('',)
+  if not os.path.splitext(command_name)[1] and os.name == 'nt':
     extensions = ('.bat', '.com', '.exe')
-  else:
-    extensions = ('',)
 
   for path in os.environ.get('PATH', '').split(os.pathsep):
     for ext in extensions:
@@ -138,8 +177,8 @@ def DownloadFile(filename, url):
   temp_filename = filename + '.partial'
   # Ensure curl is in user's PATH
   FindInPath('curl')
-  curl_cmd = ['curl', '--fail', '--location', '--stderr', '-',
-              '-o', temp_filename]
+  curl_cmd = ['curl', '--fail', '--location', '--stderr', '-', '-o',
+              temp_filename]
   if hasattr(sys.stdout, 'fileno') and os.isatty(sys.stdout.fileno()):
     # Add --progress-bar but only if stdout is a TTY device.
     curl_cmd.append('--progress-bar')
@@ -150,7 +189,7 @@ def DownloadFile(filename, url):
     curl_cmd += ['--silent', '--show-error']
   curl_cmd.append(url)
 
-  if verbose:
+  if log_level > LOG_WARN:
     Log('Downloading: %s [%s]' % (url, filename))
   else:
     Log('Downloading: %s' % url.replace(GS_URL, ''))
@@ -160,7 +199,6 @@ def DownloadFile(filename, url):
     raise error.Error('Error downloading file: %s' % str(e))
 
   os.rename(temp_filename, filename)
-
 
 
 def CheckStamp(filename, contents=None):
@@ -196,6 +234,43 @@ def GetSDKRoot():
 
 
 @Memoize
+def GetEmscriptenRoot():
+  emscripten = os.environ.get('EMSCRIPTEN')
+  if emscripten is None:
+    local_root = os.path.join(paths.OUT_DIR, 'emsdk', 'emscripten')
+    if os.path.exists(local_root):
+      emscripten = local_root
+    else:
+      raise error.Error('$EMSCRIPTEN not set and %s does not exist.' %
+                        local_root)
+
+  if not os.path.isdir(emscripten):
+    raise error.Error('$EMSCRIPTEN environment variable does not point'
+                      ' to a directory: %s' % emscripten)
+  return emscripten
+
+
+def SetupEmscripten():
+  if 'EMSCRIPTEN' in os.environ:
+    return
+
+  local_root = GetEmscriptenRoot()
+  os.environ['EMSCRIPTEN'] = local_root
+  os.environ['EM_CONFIG'] = os.path.join(os.path.dirname(local_root),
+                                         '.emscripten')
+  try:
+    FindInPath('node')
+  except error.Error:
+    node_bin = os.path.join(paths.OUT_DIR, 'node', 'bin')
+    if not os.path.isdir(node_bin):
+      raise error.Error('node not found in path and default path not found: %s'
+                        % node_bin)
+
+    os.environ['PATH'] += ':' + node_bin
+    FindInPath('node')
+
+
+@Memoize
 def GetSDKVersion():
   """Returns the version (as a string) of the current SDK."""
   getos = os.path.join(GetSDKRoot(), 'tools', 'getos.py')
@@ -223,52 +298,35 @@ def GetPlatform():
   platform = subprocess.check_output([getos]).strip()
   return platform
 
-
 @Memoize
 def GetToolchainRoot(config):
   """Returns the toolchain folder for a given NaCl toolchain."""
+  if config.toolchain == 'emscripten':
+    return GetEmscriptenRoot()
+
   platform = GetPlatform()
-  if config.toolchain == 'pnacl':
-    tc_dir = '%s_pnacl' % platform
+  if config.toolchain in ('pnacl', 'clang-newlib'):
+    tc_dir = os.path.join('%s_pnacl' % platform)
   else:
-    tc_arch = {
-      'arm': 'arm',
-      'i686': 'x86',
-      'x86_64': 'x86'
-    }[config.arch]
-    if config.toolchain == 'clang-newlib':
-      tc_dir = '%s_pnacl' % platform
-    else:
-      tc_dir = '%s_%s_%s' % (platform, tc_arch, config.toolchain)
-    tc_dir = os.path.join(tc_dir, '%s-nacl' % config.arch)
+    tc_arch = {'arm': 'arm', 'i686': 'x86', 'x86_64': 'x86'}[config.arch]
+    tc_dir = '%s_%s_%s' % (platform, tc_arch, config.libc)
 
-  rtn = os.path.join(GetSDKRoot(), 'toolchain', tc_dir)
-
-  # New PNaCl toolchains use 'le32-nacl'.
-  # TODO: make this the default once pepper_39 hits stable.
-  if config.toolchain == 'pnacl':
-    pnacl_dir = os.path.join(rtn, 'le32-nacl')
-    if os.path.exists(pnacl_dir):
-      rtn = pnacl_dir
-  return rtn
+  return os.path.join(GetSDKRoot(), 'toolchain', tc_dir)
 
 
 @Memoize
 def GetInstallRoot(config):
-  """Returns the installation used by naclports within a given toolchain."""
-  tc_root = GetToolchainRoot(config)
-  # TODO(sbc): drop the pnacl special case once 'le32-nacl/usr' is available
-  # in the PNaCl default search path (should be once pepper_39 is stable).
+  """Returns the naclports install location given NaCl configuration."""
+  tc_dir = GetToolchainRoot(config)
+
+  if config.toolchain == 'emscripten':
+    return os.path.join(tc_dir, 'system', 'local')
+
   if config.toolchain == 'pnacl':
-    if tc_root.endswith('le32-nacl'):
-      if int(GetSDKVersion()) < 40:
-        return os.path.join(tc_root, 'local')
-      else:
-        return os.path.join(tc_root, 'usr')
-    else:
-      return os.path.join(tc_root, 'usr', 'local')
+    tc_dir = os.path.join(tc_dir, 'le32-nacl')
   else:
-    return os.path.join(tc_root, 'usr')
+    tc_dir = os.path.join(tc_dir, '%s-nacl' % config.arch)
+  return os.path.join(tc_dir, 'usr')
 
 
 @Memoize
@@ -276,6 +334,17 @@ def GetInstallStampRoot(config):
   """Returns the installation metadata folder for the give configuration."""
   tc_root = GetInstallRoot(config)
   return os.path.join(tc_root, 'var', 'lib', 'npkg')
+
+
+@Memoize
+def GetStrip(config):
+  tc_dir = GetToolchainRoot(config)
+  if config.toolchain == 'pnacl':
+    strip = os.path.join(tc_dir, 'bin', 'pnacl-strip')
+  else:
+    strip = os.path.join(tc_dir, 'bin', '%s-nacl-strip' % config.arch)
+  assert os.path.exists(strip), 'strip executable not found: %s' % strip
+  return strip
 
 
 def GetInstallStamp(package_name, config):
@@ -348,8 +417,7 @@ def VerifyHash(filename, sha1):
   if sha1 != file_sha1:
     raise HashVerificationError(
         'verification failed: %s\nExpected: %s\nActual: %s' %
-            (filename, sha1, file_sha1))
-
+        (filename, sha1, file_sha1))
 
 
 def RemoveTree(directory):
@@ -372,8 +440,8 @@ def Makedirs(directory):
   if os.path.isdir(directory):
     return
   if os.path.exists(directory):
-    raise error.Error('mkdir: File exists and is not a directory: %s'
-                      % directory)
+    raise error.Error('mkdir: File exists and is not a directory: %s' %
+                      directory)
   Trace("mkdir: %s" % directory)
   os.makedirs(directory)
 
@@ -384,6 +452,7 @@ class Lock(object):
   This class will raise an exception if another process already holds the
   lock for the given directory.
   """
+
   def __init__(self, lock_dir):
     if not os.path.exists(lock_dir):
       Makedirs(lock_dir)
@@ -404,12 +473,14 @@ class Lock(object):
 
 class BuildLock(Lock):
   """Lock used when building a package (essentially a lock on OUT_DIR)"""
+
   def __init__(self):
     super(BuildLock, self).__init__(paths.OUT_DIR)
 
 
 class InstallLock(Lock):
   """Lock used when installing/uninstalling package"""
+
   def __init__(self, config):
     root = GetInstallRoot(config)
     super(InstallLock, self).__init__(root)

@@ -26,12 +26,14 @@ ConfigureStep() {
   LogExecute rm ./configure
   LogExecute autoconf
 
+  # xaos takes case of defining NDEBUG itself
+  NACLPORTS_CFLAGS="${NACLPORTS_CFLAGS/-DNDEBUG/}"
   NACLPORTS_LDFLAGS+=" -Wl,--undefined=PPP_GetInterface \
                   -Wl,--undefined=PPP_ShutdownModule \
                   -Wl,--undefined=PPP_InitializeModule \
                   -Wl,--undefined=original_main"
 
-  export LIBS="-lppapi -lpthread -l${NACL_CPP_LIB} -lm"
+  export LIBS="-lppapi -lpthread -l${NACL_CXX_LIB} -lm"
   SetupCrossEnvironment
   LogExecute ./configure --with-png=no --with-long-double=no \
       --host=nacl --with-x11-driver=no --with-sffe=no

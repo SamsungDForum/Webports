@@ -7,7 +7,7 @@ import platform
 
 from naclports import error, util
 
-VALID_TOOLCHAINS = ['newlib', 'glibc', 'bionic', 'pnacl', 'clang-newlib']
+VALID_TOOLCHAINS = ['glibc', 'bionic', 'pnacl', 'clang-newlib', 'emscripten']
 VALID_LIBC = ['newlib', 'glibc', 'bionic']
 
 
@@ -15,7 +15,7 @@ class Configuration(object):
   """Class representing the build configuration for naclports packages.
 
   This consists of the following attributes:
-    toolchain   - newlib, glibc, bionic, pnacl
+    toolchain   - clang-newlib, glibc, bionic, pnacl
     arch        - x86_64, x86_32, arm, pnacl
     debug       - True/False
     config_name - 'debug' or 'release'
@@ -23,7 +23,7 @@ class Configuration(object):
   If not specified in the constructor these are read from the
   environment variables (TOOLCHAIN, NACL_ARCH, NACL_DEBUG).
   """
-  default_toolchain = 'newlib'
+  default_toolchain = 'pnacl'
 
   def __init__(self, arch=None, toolchain=None, debug=None):
     self.debug = None
@@ -41,16 +41,20 @@ class Configuration(object):
     if not toolchain:
       if arch == 'pnacl':
         toolchain = 'pnacl'
+      elif arch == 'emscripten':
+        toolchain = 'emscripten'
       else:
         toolchain = self.default_toolchain
-    self.toolchain = toolchain
 
+    self.toolchain = toolchain
     if self.toolchain not in VALID_TOOLCHAINS:
       raise error.Error("Invalid toolchain: %s" % self.toolchain)
 
     if not arch:
       if self.toolchain == 'pnacl':
         arch = 'pnacl'
+      elif self.toolchain == 'emscripten':
+        arch = 'emscripten'
       elif self.toolchain == 'bionic':
         arch = 'arm'
       elif platform.machine() == 'i686':
@@ -79,6 +83,8 @@ class Configuration(object):
   def SetLibc(self):
     if self.toolchain in ('pnacl', 'clang-newlib'):
       self.libc = 'newlib'
+    elif self.toolchain == 'emscripten':
+      self.libc = 'emscripten'
     else:
       self.libc = self.toolchain
 
@@ -90,7 +96,12 @@ class Configuration(object):
                (other.libc, other.toolchain, other.debug))
 
   def __str__(self):
-    return '%s/%s/%s' % (self.arch, self.toolchain, self.config_name)
+    if self.arch == self.toolchain:
+      # For some toolchains (emscripten and pnacl), arch will always match the
+      # toolchain name is redundant to report it twice.
+      return '%s/%s' % (self.toolchain, self.config_name)
+    else:
+      return '%s/%s/%s' % (self.arch, self.toolchain, self.config_name)
 
   def __repr__(self):
     return '<Configuration %s>' % str(self)

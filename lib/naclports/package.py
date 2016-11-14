@@ -4,7 +4,7 @@
 
 import os
 
-from naclports.util import Trace, Log, Warn
+from naclports.util import Log, Warn, LogVerbose
 from naclports.error import Error
 from naclports import configuration, pkg_info, util
 
@@ -51,9 +51,7 @@ class Package(object):
         setattr(self, key, None)
 
     # Parse pkg_info file
-    info = pkg_info.ParsePkgInfo(info_string,
-                                 self.info,
-                                 valid_keys,
+    info = pkg_info.ParsePkgInfo(info_string, self.info, valid_keys,
                                  required_keys)
 
     # Set attributres based on pkg_info setttings.
@@ -68,6 +66,10 @@ class Package(object):
         raise Error('%s: invalid libc: %s' % (self.info, libc))
 
     for toolchain in self.DISABLED_TOOLCHAIN:
+      if '/' in toolchain:
+        toolchain, arch = toolchain.split('/')
+        if arch not in util.arch_to_pkgarch:
+          raise Error('%s: invalid architecture: %s' % (self.info, arch))
       if toolchain not in configuration.VALID_TOOLCHAINS:
         raise Error('%s: invalid toolchain: %s' % (self.info, toolchain))
 
@@ -105,10 +107,9 @@ class Package(object):
     return "'%s' [%s]" % (self.NAME, self.config)
 
   def LogStatus(self, message, suffix=''):
-    util.LogHeading(message, " '%s' [%s] %s" % (
-        util.Color(self.NAME, 'yellow'),
-        util.Color(self.config, 'blue'),
-        suffix))
+    util.LogHeading(message, " '%s' [%s] %s" %
+                    (util.Color(self.NAME, 'yellow'),
+                     util.Color(self.config, 'blue'), suffix))
 
   def CheckDeps(self, valid_packages):
     for package in self.DEPENDS:
@@ -150,6 +151,9 @@ class InstalledPackage(Package):
 
   def Files(self):
     """Yields the list of files currently installed by this package."""
+    file_list = self.GetListFile()
+    if not os.path.exists(file_list):
+      return
     with open(self.GetListFile()) as f:
       for line in f:
         yield line.strip()
@@ -160,14 +164,15 @@ class InstalledPackage(Package):
 
       root = util.GetInstallRoot(self.config)
       for filename in self.Files():
-        filename = os.path.join(root, filename)
-        if not os.path.lexists(filename):
-          Warn('File not found while uninstalling: %s' % filename)
+        fullname = os.path.join(root, filename)
+        if not os.path.lexists(fullname):
+          Warn('File not found while uninstalling: %s' % fullname)
           continue
-        Trace('rm %s' % filename)
-        RemoveFile(filename)
+        LogVerbose('uninstall: %s' % filename)
+        RemoveFile(fullname)
 
-      RemoveFile(self.GetListFile())
+      if os.path.exists(self.GetListFile()):
+        RemoveFile(self.GetListFile())
 
 
 def InstalledPackageIterator(config):
