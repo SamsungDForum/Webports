@@ -35,9 +35,9 @@ ConfigureStep() {
     --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
     --enable-encoder=aac,mpeg4,libx264 \
     --enable-protocol=concat,file \
-    --enable-demuxer=aac,avi,h264,image2,matroska,pcm_s16le,mov,m4v,rawvideo,wav \
+    --enable-demuxer=aac,avi,h264,hevc,image2,matroska,pcm_s16le,mov,m4v,rawvideo,wav \
     --enable-muxer=h264,ipod,mov,mp4 \
-    --enable-parser=aac,h264,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
+    --enable-parser=aac,h264,hevc,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
     --enable-bsf=aac_adtstoasc \
     --enable-filter=transpose \
     --disable-decoder=dpx \
