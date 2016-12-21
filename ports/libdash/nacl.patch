@@ -27,33 +27,25 @@ index 80f426b..852dd9e 100644
  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 diff --git a/libdash/libdash/CMakeLists.txt b/libdash/libdash/CMakeLists.txt
-dissimilarity index 65%
-index aeae94f..bfd62db 100644
+index aeae94f..4d87370 100644
 --- a/libdash/libdash/CMakeLists.txt
 +++ b/libdash/libdash/CMakeLists.txt
 @@ -1,14 +1,18 @@
--cmake_minimum_required(VERSION 2.8)
--
+ cmake_minimum_required(VERSION 2.8)
+ 
 -find_package(LibXml2 REQUIRED)
 -find_package(ZLIB REQUIRED)
 -find_package(CURL REQUIRED)
 -
 -
--include_directories(include)
--
--
--file(GLOB_RECURSE libdash_source *.cpp)
--
+ include_directories(include)
+ 
+ 
+ file(GLOB_RECURSE libdash_source *.cpp)
+ 
 -add_library(dash SHARED ${libdash_source})
 -target_link_libraries(dash ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBXML2_LIBRARIES})
 \ No newline at end of file
-+cmake_minimum_required(VERSION 2.8)
-+
-+include_directories(include)
-+
-+
-+file(GLOB_RECURSE libdash_source *.cpp)
-+
 +add_library(dash STATIC ${libdash_source})
 +#target_link_libraries(dash ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBXML2_LIBRARIES})
 +
@@ -66,6 +58,93 @@ index aeae94f..bfd62db 100644
 +install(TARGETS dash DESTINATION lib)
 +install(DIRECTORY include/ DESTINATION include/libdash)
 \ No newline at end of file
+diff --git a/libdash/libdash/include/IDASHManager.h b/libdash/libdash/include/IDASHManager.h
+index a2ed381..e5b4661 100644
+--- a/libdash/libdash/include/IDASHManager.h
++++ b/libdash/libdash/include/IDASHManager.h
+@@ -33,7 +33,16 @@ namespace dash
+              *  @param      path    A URI to a MPD file
+              *  @return     a pointer to an dash::mpd::IMPD object
+              */
+-            virtual mpd::IMPD* Open (char *path) = 0;
++            virtual mpd::IMPD* Open (const char *path) = 0;
++
++            /**
++             *  Returns a pointer to dash::mpd::IMPD object representing the the information found in the MPD file specified by \em path but read from a memory buffer
++             *  @param      path    A URI to a MPD file
++             *  @param      buffer  Memory buffer from which data should be read
++             *  @param      size    Buffer size
++             *  @return     a pointer to an dash::mpd::IMPD object
++             */
++            virtual mpd::IMPD* Open (const char* path, const char* buffer, int size) = 0;
+ 
+             /**
+              *  Frees allocated memory and deletes the DashManager
+diff --git a/libdash/libdash/source/manager/DASHManager.cpp b/libdash/libdash/source/manager/DASHManager.cpp
+index 5181233..c2eb11a 100644
+--- a/libdash/libdash/source/manager/DASHManager.cpp
++++ b/libdash/libdash/source/manager/DASHManager.cpp
+@@ -17,16 +17,9 @@ using namespace dash::mpd;
+ using namespace dash::network;
+ using namespace dash::helpers;
+ 
+-DASHManager::DASHManager            ()
+-{
+-}
+-DASHManager::~DASHManager           ()
+-{
+-}
+-IMPD*           DASHManager::Open   (char *path)
++namespace {
++IMPD* ParseMPD(DOMParser& parser)
+ {
+-    DOMParser parser(path);
+-
+     uint32_t fetchTime = Time::GetCurrentUTCTimeInSec();
+ 
+     if (!parser.Parse())
+@@ -39,7 +32,27 @@ IMPD*           DASHManager::Open   (char *path)
+ 
+     return mpd;
+ }
++}
++DASHManager::DASHManager            ()
++{
++}
++DASHManager::~DASHManager           ()
++{
++}
++IMPD*           DASHManager::Open   (const char *path)
++{
++    curl_global_init(CURL_GLOBAL_ALL);
++    DOMParser parser(path);
++    return ParseMPD(parser);
++}
++IMPD*           DASHManager::Open   (const char *path, const char* buf, int size)
++{
++    curl_global_init(CURL_GLOBAL_ALL);
++    DOMParser parser(path, buf, size);
++    return ParseMPD(parser);
++}
+ void            DASHManager::Delete ()
+ {
++    curl_global_cleanup();
+     delete this;
+ }
+diff --git a/libdash/libdash/source/manager/DASHManager.h b/libdash/libdash/source/manager/DASHManager.h
+index 1cebea2..5638f6d 100644
+--- a/libdash/libdash/source/manager/DASHManager.h
++++ b/libdash/libdash/source/manager/DASHManager.h
+@@ -27,7 +27,8 @@ namespace dash
+             DASHManager             ();
+             virtual ~DASHManager    ();
+ 
+-            mpd::IMPD*  Open    (char *path);
++            mpd::IMPD*  Open    (const char *path);
++            mpd::IMPD*  Open    (const char *path, const char* buffer, int size);
+             void        Delete  ();
+     };
+ }
 diff --git a/libdash/libdash/source/mpd/Segment.cpp b/libdash/libdash/source/mpd/Segment.cpp
 index 3120076..de07a31 100644
 --- a/libdash/libdash/source/mpd/Segment.cpp
@@ -79,6 +158,115 @@ index 3120076..de07a31 100644
      {
          this->host = host;
          this->port = port;
+diff --git a/libdash/libdash/source/mpd/SegmentTemplate.cpp b/libdash/libdash/source/mpd/SegmentTemplate.cpp
+index b92c469..56054a3 100644
+--- a/libdash/libdash/source/mpd/SegmentTemplate.cpp
++++ b/libdash/libdash/source/mpd/SegmentTemplate.cpp
+@@ -134,8 +134,11 @@ void                SegmentTemplate::FormatChunk                    (std::string
+     std::string formatTag = "%01d";
+ 
+     if ( (pos = uri.find("%0")) != std::string::npos)
+-        formatTag = uri.substr(pos).append("d");
+-
++    {
++        formatTag = uri.substr(pos);
++        if (uri.find("d") == std::string::npos)
++            formatTag.append("d");
++    }
+     sprintf(formattedNumber, formatTag.c_str(), number);
+     uri = formattedNumber;
+ }
+diff --git a/libdash/libdash/source/network/AbstractChunk.cpp b/libdash/libdash/source/network/AbstractChunk.cpp
+index 0c3ed79..dee8b42 100644
+--- a/libdash/libdash/source/network/AbstractChunk.cpp
++++ b/libdash/libdash/source/network/AbstractChunk.cpp
+@@ -40,8 +40,6 @@ bool    AbstractChunk::StartDownload                ()
+     if(this->stateManager.State() != NOT_STARTED)
+         return false;
+ 
+-    curl_global_init(CURL_GLOBAL_ALL);
+-
+     this->curl = curl_easy_init();
+     curl_easy_setopt(this->curl, CURLOPT_URL, this->AbsoluteURI().c_str());
+     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, CurlResponseCallback);
+@@ -150,7 +148,6 @@ void*   AbstractChunk::DownloadInternalConnection   (void *abstractchunk)
+     chunk->response = curl_easy_perform(chunk->curl);
+ 
+     curl_easy_cleanup(chunk->curl);
+-    curl_global_cleanup();
+ 
+     if(chunk->stateManager.State() == REQUEST_ABORT)
+         chunk->stateManager.State(ABORTED);
+diff --git a/libdash/libdash/source/xml/DOMParser.cpp b/libdash/libdash/source/xml/DOMParser.cpp
+index e5694f8..6c539dc 100644
+--- a/libdash/libdash/source/xml/DOMParser.cpp
++++ b/libdash/libdash/source/xml/DOMParser.cpp
+@@ -14,10 +14,21 @@
+ using namespace dash::xml;
+ using namespace dash::helpers;
+ 
+-DOMParser::DOMParser    (std::string url) :
++DOMParser::DOMParser    (const std::string& url) :
+            url          (url),
+            reader       (NULL),
+-           root         (NULL)
++           root         (NULL),
++           buffer       (NULL),
++           buffer_size  (0)
++{
++    this->Init();
++}
++DOMParser::DOMParser    (const std::string& url, const char* buf, int size) :
++           url          (url),
++           reader       (NULL),
++           root         (NULL),
++           buffer       (buf),
++           buffer_size  (size)
+ {
+     this->Init();
+ }
+@@ -33,7 +44,10 @@ Node*   DOMParser::GetRootNode              () const
+ }
+ bool    DOMParser::Parse                    ()
+ {
+-    this->reader = xmlReaderForFile(this->url.c_str(), NULL, 0);
++    if(this->buffer)
++        this->reader = xmlReaderForMemory(buffer, buffer_size, this->url.c_str(), NULL, 0);
++    else
++        this->reader = xmlReaderForFile(this->url.c_str(), NULL, 0);
+ 
+     if(this->reader == NULL)
+         return false;
+diff --git a/libdash/libdash/source/xml/DOMParser.h b/libdash/libdash/source/xml/DOMParser.h
+index c005863..49fcc5c 100644
+--- a/libdash/libdash/source/xml/DOMParser.h
++++ b/libdash/libdash/source/xml/DOMParser.h
+@@ -34,7 +34,8 @@ namespace dash
+         class DOMParser
+         {
+             public:
+-                DOMParser           (std::string url);
++                DOMParser           (const std::string& url);
++                DOMParser           (const std::string& url, const char* buf, int size);
+                 virtual ~DOMParser  ();
+ 
+                 bool    Parse       ();
+@@ -45,6 +46,8 @@ namespace dash
+                 xmlTextReaderPtr    reader;
+                 Node                *root;
+                 std::string         url;
++                const char*         buffer;
++                int                 buffer_size;
+ 
+                 void    Init                    ();
+                 Node*   ProcessNode             ();
+@@ -53,4 +56,4 @@ namespace dash
+         };
+     }
+ }
+-#endif /* DOMPARSER_H_ */
+\ No newline at end of file
++#endif /* DOMPARSER_H_ */
 diff --git a/libdash/libdash_networkpart_test/CMakeLists.txt b/libdash/libdash_networkpart_test/CMakeLists.txt
 index 355a4f4..1ae4660 100644
 --- a/libdash/libdash_networkpart_test/CMakeLists.txt
@@ -96,61 +284,3 @@ index 355a4f4..1ae4660 100644
 +if ($ENV{NACL_ARCH} STREQUAL "pnacl")
 +    target_link_libraries(libdash_networkpart_test nacl_io)
 +endif ()
-diff --git a/libdash/libdash/source/manager/DASHManager.cpp b/libdash/libdash/source/manager/DASHManager.cpp
-index 5181233..ef45594 100644
---- a/libdash/libdash/source/manager/DASHManager.cpp
-+++ b/libdash/libdash/source/manager/DASHManager.cpp
-@@ -25,6 +25,7 @@ DASHManager::~DASHManager           ()
- }
- IMPD*           DASHManager::Open   (char *path)
- {
-+    curl_global_init(CURL_GLOBAL_ALL);
-     DOMParser parser(path);
-
-     uint32_t fetchTime = Time::GetCurrentUTCTimeInSec();
-@@ -41,5 +42,6 @@ IMPD*           DASHManager::Open   (char *path)
- }
- void            DASHManager::Delete ()
- {
-+    curl_global_cleanup();
-     delete this;
- }
-diff --git a/libdash/libdash/source/network/AbstractChunk.cpp b/libdash/libdash/source/network/AbstractChunk.cpp
-index 0c3ed79..dee8b42 100644
---- a/libdash/libdash/source/network/AbstractChunk.cpp
-+++ b/libdash/libdash/source/network/AbstractChunk.cpp
-@@ -40,8 +40,6 @@ bool    AbstractChunk::StartDownload                ()
-     if(this->stateManager.State() != NOT_STARTED)
-         return false;
-
--    curl_global_init(CURL_GLOBAL_ALL);
--
-     this->curl = curl_easy_init();
-     curl_easy_setopt(this->curl, CURLOPT_URL, this->AbsoluteURI().c_str());
-     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, CurlResponseCallback);
-@@ -150,7 +148,6 @@ void*   AbstractChunk::DownloadInternalConnection   (void *abstractchunk)
-     chunk->response = curl_easy_perform(chunk->curl);
-
-     curl_easy_cleanup(chunk->curl);
--    curl_global_cleanup();
-
-     if(chunk->stateManager.State() == REQUEST_ABORT)
-         chunk->stateManager.State(ABORTED);
-diff --git a/libdash/libdash/source/mpd/SegmentTemplate.cpp b/libdash/libdash/source/mpd/SegmentTemplate.cpp
-index b92c469..133ffbe 100644
---- a/libdash/libdash/source/mpd/SegmentTemplate.cpp
-+++ b/libdash/libdash/source/mpd/SegmentTemplate.cpp
-@@ -134,8 +134,11 @@ void                SegmentTemplate::FormatChunk                    (std::string
-     std::string formatTag = "%01d";
-
-     if ( (pos = uri.find("%0")) != std::string::npos)
--        formatTag = uri.substr(pos).append("d");
--
-+    {
-+        formatTag = uri.substr(pos);
-+        if (uri.find("d") == std::string::npos)
-+            formatTag.append("d");
-+    }
-     sprintf(formattedNumber, formatTag.c_str(), number);
-     uri = formattedNumber;
- }
