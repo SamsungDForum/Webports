@@ -29,7 +29,6 @@ ConfigureStep() {
     --target-os=linux \
     --disable-everything \
     --disable-programs \
-    --enable-gpl \
     --enable-static \
     --enable-cross-compile \
     --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
