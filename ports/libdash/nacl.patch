@@ -80,6 +80,32 @@ index a2ed381..e5b4661 100644
  
              /**
               *  Frees allocated memory and deletes the DashManager
+diff --git a/libdash/libdash/include/ISegmentTemplate.h b/libdash/libdash/include/ISegmentTemplate.h
+index d707295..19fe641 100644
+--- a/libdash/libdash/include/ISegmentTemplate.h
++++ b/libdash/libdash/include/ISegmentTemplate.h
+@@ -126,7 +126,7 @@ namespace dash
+                  *                                  This integer will be formated according to a possibly contained format tag in the \em \$Time\$ identifier.
+                  *  @return     a pointer to a dash::mpd::ISegment object
+                  */
+-                virtual ISegment*           GetMediaSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const = 0;
++                virtual ISegment*           GetMediaSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const = 0;
+ 
+                 /**
+                  *  Returns a pointer to a dash::mpd::ISegment object that represents a Index Segment and can be downloaded.
+@@ -140,9 +140,9 @@ namespace dash
+                  *                                  This integer will be formated according to a possibly contained format tag in the \em \$Time\$ identifier.
+                  *  @return     a pointer to a dash::mpd::ISegment object
+                  */
+-                virtual ISegment*           GetIndexSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const = 0;
++                virtual ISegment*           GetIndexSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const = 0;
+         };
+     }
+ }
+ 
+-#endif /* ISEGMENTTEMPLATE_H_ */
+\ No newline at end of file
++#endif /* ISEGMENTTEMPLATE_H_ */
 diff --git a/libdash/libdash/source/manager/DASHManager.cpp b/libdash/libdash/source/manager/DASHManager.cpp
 index 5181233..c2eb11a 100644
 --- a/libdash/libdash/source/manager/DASHManager.cpp
@@ -159,23 +185,92 @@ index 3120076..de07a31 100644
          this->host = host;
          this->port = port;
 diff --git a/libdash/libdash/source/mpd/SegmentTemplate.cpp b/libdash/libdash/source/mpd/SegmentTemplate.cpp
-index b92c469..56054a3 100644
+index b92c469..98f7788 100644
 --- a/libdash/libdash/source/mpd/SegmentTemplate.cpp
 +++ b/libdash/libdash/source/mpd/SegmentTemplate.cpp
-@@ -134,8 +134,11 @@ void                SegmentTemplate::FormatChunk                    (std::string
-     std::string formatTag = "%01d";
+@@ -73,15 +73,15 @@ ISegment*           SegmentTemplate::GetIndexSegmentFromNumber      (const std::
+ {
+     return ToSegment(this->index, baseurls, representationID, bandwidth, dash::metrics::IndexSegment, number);
+ }
+-ISegment*           SegmentTemplate::GetMediaSegmentFromTime        (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const
++ISegment*           SegmentTemplate::GetMediaSegmentFromTime        (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const
+ {
+     return ToSegment(this->media, baseurls, representationID, bandwidth, dash::metrics::MediaSegment, 0, time);
+ }
+-ISegment*           SegmentTemplate::GetIndexSegmentFromTime        (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const
++ISegment*           SegmentTemplate::GetIndexSegmentFromTime        (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const
+ {
+     return ToSegment(this->index, baseurls, representationID, bandwidth, dash::metrics::IndexSegment, 0, time);
+ }
+-std::string         SegmentTemplate::ReplaceParameters              (const std::string& uri, const std::string& representationID, uint32_t bandwidth, uint32_t number, uint32_t time) const
++std::string         SegmentTemplate::ReplaceParameters              (const std::string& uri, const std::string& representationID, uint32_t bandwidth, uint32_t number, uint64_t time) const
+ {
+     std::vector<std::string> chunks;
+     std::string replacedUri = "";
+@@ -127,19 +127,22 @@ std::string         SegmentTemplate::ReplaceParameters              (const std::
+         return replacedUri;
+     }
+ }
+-void                SegmentTemplate::FormatChunk                    (std::string& uri, uint32_t number) const
++void                SegmentTemplate::FormatChunk                    (std::string& uri, uint64_t number) const
+ {
+     char formattedNumber [50];
+     size_t pos = 0;
+-    std::string formatTag = "%01d";
++    std::string formatTag = "%01llu";
  
      if ( (pos = uri.find("%0")) != std::string::npos)
 -        formatTag = uri.substr(pos).append("d");
 -
 +    {
 +        formatTag = uri.substr(pos);
-+        if (uri.find("d") == std::string::npos)
-+            formatTag.append("d");
++        if (uri.find("d") == std::string::npos && uri.find("u") == std::string::npos)
++            formatTag.append("llu");
 +    }
      sprintf(formattedNumber, formatTag.c_str(), number);
      uri = formattedNumber;
  }
+-ISegment*           SegmentTemplate::ToSegment                      (const std::string& uri, const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, HTTPTransactionType type, uint32_t number, uint32_t time) const
++ISegment*           SegmentTemplate::ToSegment                      (const std::string& uri, const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, HTTPTransactionType type, uint32_t number, uint64_t time) const
+ {
+     Segment *seg = new Segment();
+ 
+@@ -149,4 +152,4 @@ ISegment*           SegmentTemplate::ToSegment                      (const std::
+     delete(seg);
+ 
+     return NULL;
+-}
+\ No newline at end of file
++}
+diff --git a/libdash/libdash/source/mpd/SegmentTemplate.h b/libdash/libdash/source/mpd/SegmentTemplate.h
+index e5782a8..52aae8a 100644
+--- a/libdash/libdash/source/mpd/SegmentTemplate.h
++++ b/libdash/libdash/source/mpd/SegmentTemplate.h
+@@ -36,8 +36,8 @@ namespace dash
+                 ISegment*           ToBitstreamSwitchingSegment (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth) const;
+                 ISegment*           GetMediaSegmentFromNumber   (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t number) const;
+                 ISegment*           GetIndexSegmentFromNumber   (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t number) const;
+-                ISegment*           GetMediaSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const;
+-                ISegment*           GetIndexSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint32_t time) const;
++                ISegment*           GetMediaSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const;
++                ISegment*           GetIndexSegmentFromTime     (const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, uint64_t time) const;
+ 
+                 void    SetMedia                (const std::string& media);
+                 void    SetIndex                (const std::string& index);
+@@ -45,10 +45,10 @@ namespace dash
+                 void    SetBitstreamSwitching   (const std::string& bitstreamSwichting);
+ 
+             private:
+-                std::string ReplaceParameters   (const std::string& uri, const std::string& representationID, uint32_t bandwidth, uint32_t number, uint32_t time) const;
+-                void        FormatChunk         (std::string& uri, uint32_t number) const;
++                std::string ReplaceParameters   (const std::string& uri, const std::string& representationID, uint32_t bandwidth, uint32_t number, uint64_t time) const;
++                void        FormatChunk         (std::string& uri, uint64_t number) const;
+                 ISegment*   ToSegment           (const std::string& uri, const std::vector<IBaseUrl *>& baseurls, const std::string& representationID, uint32_t bandwidth, 
+-                                                 dash::metrics::HTTPTransactionType type, uint32_t number = 0, uint32_t time = 0) const;
++                                                 dash::metrics::HTTPTransactionType type, uint32_t number = 0, uint64_t time = 0) const;
+ 
+                 std::string media;
+                 std::string index;
 diff --git a/libdash/libdash/source/network/AbstractChunk.cpp b/libdash/libdash/source/network/AbstractChunk.cpp
 index 0c3ed79..dee8b42 100644
 --- a/libdash/libdash/source/network/AbstractChunk.cpp
