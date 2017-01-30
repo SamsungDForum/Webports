@@ -146,7 +146,7 @@ index f9f4d72..36032a1 100644
  
  int av_format_get_probe_score(const AVFormatContext *s);
 diff --git a/libavformat/isom.h b/libavformat/isom.h
-index 9038057..d803f6b 100644
+index 9038057..a9d4481 100644
 --- a/libavformat/isom.h
 +++ b/libavformat/isom.h
 @@ -115,6 +115,16 @@ typedef struct MOVFragmentIndex {
@@ -166,8 +166,11 @@ index 9038057..d803f6b 100644
  typedef struct MOVStreamContext {
      AVIOContext *pb;
      int pb_is_copied;
-@@ -187,6 +197,12 @@ typedef struct MOVStreamContext {
+@@ -185,8 +195,15 @@ typedef struct MOVStreamContext {
+         uint8_t* auxiliary_info_end;
+         uint8_t* auxiliary_info_pos;
          uint8_t auxiliary_info_default_size;
++        uint32_t auxiliary_info_sample_count;
          uint8_t* auxiliary_info_sizes;
          size_t auxiliary_info_sizes_count;
 +        uint64_t* auxiliary_info_offsets;
@@ -182,7 +185,7 @@ index 9038057..d803f6b 100644
 diff --git a/libavformat/mov.c b/libavformat/mov.c
 old mode 100644
 new mode 100755
-index 1e21418..8d813c6
+index 431aa00..82fd9dd
 --- a/libavformat/mov.c
 +++ b/libavformat/mov.c
 @@ -70,6 +70,7 @@ typedef struct MOVParseTableEntry {
@@ -193,7 +196,7 @@ index 1e21418..8d813c6
  
  static int mov_metadata_track_or_disc_number(MOVContext *c, AVIOContext *pb,
                                               unsigned len, const char *key)
-@@ -974,12 +975,123 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -974,12 +975,127 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      return 0;
  }
  
@@ -267,6 +270,10 @@ index 1e21418..8d813c6
 +        if (sc->cenc.auxiliary_info_default_size) {
 +            sample_data_size = (size_t)
 +                    sc->cenc.auxiliary_info_default_size * sc->sample_count;
++            if (!sample_data_size && sc->cenc.auxiliary_info_sample_count) {
++                sample_data_size = 
++                    sc->cenc.auxiliary_info_default_size * sc->cenc.auxiliary_info_sample_count;
++            }
 +        } else if (sc->cenc.auxiliary_info_sizes) {
 +            for (i = 0; i < sc->cenc.auxiliary_info_sizes_count; ++i) {
 +                sample_data_size += sc->cenc.auxiliary_info_sizes[i];
@@ -292,7 +299,7 @@ index 1e21418..8d813c6
 +
 +    sc->cenc.auxiliary_info_pos = sc->cenc.auxiliary_info;
 +    sc->cenc.auxiliary_info_end = sc->cenc.auxiliary_info + data_size;
-+    sc->cenc.use_subsamples = 1;
++    sc->cenc.use_subsamples = sc->cenc.auxiliary_info_sizes || sc->sample_count;
 +
 +end:
 +    seek_ret = avio_seek(pb, curr_stream_pos, SEEK_SET);
@@ -317,7 +324,7 @@ index 1e21418..8d813c6
      return 0; /* now go for moov */
  }
  
-@@ -2752,6 +2864,9 @@ static int mov_read_sbgp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -2752,6 +2868,9 @@ static int mov_read_sbgp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      version = avio_r8(pb); /* version */
      avio_rb24(pb); /* flags */
      grouping_type = avio_rl32(pb);
@@ -327,7 +334,7 @@ index 1e21418..8d813c6
      if (grouping_type != MKTAG( 'r','a','p',' '))
          return 0; /* only support 'rap ' grouping */
      if (version == 1)
-@@ -4581,17 +4696,22 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -4581,17 +4700,22 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      MOVStreamContext *sc;
      size_t auxiliary_info_size;
  
@@ -353,7 +360,7 @@ index 1e21418..8d813c6
      avio_r8(pb); /* version */
      sc->cenc.use_subsamples = avio_rb24(pb) & 0x02; /* flags */
  
-@@ -4619,13 +4739,17 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -4619,13 +4743,17 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
          return AVERROR_INVALIDDATA;
      }
  
@@ -376,7 +383,7 @@ index 1e21418..8d813c6
  }
  
  static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
-@@ -4636,17 +4760,20 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -4636,17 +4764,20 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      int atom_header_size;
      int flags;
  
@@ -400,7 +407,16 @@ index 1e21418..8d813c6
      atom_header_size = 9;
  
      avio_r8(pb); /* version */
-@@ -4684,6 +4811,161 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -4660,7 +4791,7 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+     }
+ 
+     sc->cenc.auxiliary_info_default_size = avio_r8(pb);
+-    avio_rb32(pb);    /* entries */
++    sc->cenc.auxiliary_info_sample_count = avio_rb32(pb);    /* entries */
+ 
+     if (atom.size <= atom_header_size) {
+         return 0;
+@@ -4684,6 +4815,161 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      return 0;
  }
  
@@ -562,7 +578,7 @@ index 1e21418..8d813c6
  static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int size)
  {
      uint32_t encrypted_bytes;
-@@ -4750,6 +5032,78 @@ static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int
+@@ -4750,6 +5036,78 @@ static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int
      return 0;
  }
  
@@ -641,7 +657,7 @@ index 1e21418..8d813c6
  static int mov_seek_auxiliary_info(AVFormatContext *s, MOVStreamContext *sc)
  {
      size_t auxiliary_info_seek_offset = 0;
-@@ -4858,6 +5212,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
+@@ -4858,6 +5216,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
  { MKTAG('f','r','m','a'), mov_read_frma },
  { MKTAG('s','e','n','c'), mov_read_senc },
  { MKTAG('s','a','i','z'), mov_read_saiz },
@@ -652,7 +668,7 @@ index 1e21418..8d813c6
  { 0, NULL }
  };
  
-@@ -5276,6 +5634,9 @@ static int mov_read_close(AVFormatContext *s)
+@@ -5276,6 +5638,9 @@ static int mov_read_close(AVFormatContext *s)
  
          av_freep(&sc->cenc.auxiliary_info);
          av_freep(&sc->cenc.auxiliary_info_sizes);
@@ -662,9 +678,9 @@ index 1e21418..8d813c6
          av_aes_ctr_free(sc->cenc.aes_ctr);
      }
  
-@@ -5642,6 +6003,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
-     if (error_code == AVERROR_EOF || avio_feof(pb))
+@@ -5647,6 +6012,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
          return 0;
+     #endif
  
 +#if defined(__native_client__)
 +    if (!pb->seekable)
@@ -674,7 +690,7 @@ index 1e21418..8d813c6
      return 1;
  }
  
-@@ -5838,6 +6204,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -5848,6 +6218,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
          if (ret) {
              return ret;
          }
