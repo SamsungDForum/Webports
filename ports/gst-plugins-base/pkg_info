@@ -1,0 +1,10 @@
+NAME=gst-plugins-base
+VERSION=1.11.2
+URL=https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.11.2.tar.xz
+LICENSE=LGPL
+DEPENDS=(gstreamer)
+# gstreamer depends on glib, which  depends on the system gettext and for
+# some reason it can't detect this on mac.
+BUILD_OS=linux
+SHA1=ab290cf63d1c77f6067da45f5eceb94855c225ff
+DISABLED_TOOLCHAIN=(emscripten)

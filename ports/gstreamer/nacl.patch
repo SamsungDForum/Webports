@@ -1,0 +1,79 @@
+diff --git a/gst/gstconfig.h.in b/gst/gstconfig.h.in
+--- a/gst/gstconfig.h.in
++++ b/gst/gstconfig.h.in
+@@ -104,7 +104,7 @@
+  * http://docs.oracle.com/cd/E19205-01/820-4155/c++_faq.html#Vers6
+  * https://software.intel.com/en-us/node/583402
+  */
+-#if defined(__alpha__) || defined(__arc__) || defined(__arm__) || defined(__aarch64__) || defined(__bfin) || defined(__hppa__) || defined(__nios2__) || defined(__MICROBLAZE__) || defined(__mips__) || defined(__or1k__) || defined(__sh__) || defined(__SH4__) || defined(__sparc__) || defined(__sparc) || defined(__ia64__) || defined(_M_ALPHA) || defined(_M_ARM) || defined(_M_IA64) || defined(__xtensa__)
++#if defined(__native_client__) || defined(__alpha__) || defined(__arc__) || defined(__arm__) || defined(__aarch64__) || defined(__bfin) || defined(__hppa__) || defined(__nios2__) || defined(__MICROBLAZE__) || defined(__mips__) || defined(__or1k__) || defined(__sh__) || defined(__SH4__) || defined(__sparc__) || defined(__sparc) || defined(__ia64__) || defined(_M_ALPHA) || defined(_M_ARM) || defined(_M_IA64) || defined(__xtensa__)
+ #  define GST_HAVE_UNALIGNED_ACCESS 0
+ #elif defined(__i386__) || defined(__i386) || defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__ppc__) || defined(__ppc64__) || defined(__powerpc__) || defined(__powerpc64__) || defined(__m68k__) || defined(_M_IX86) || defined(_M_AMD64) || defined(_M_X64) || defined(__s390__) || defined(__s390x__) || defined(__zarch__)
+ #  define GST_HAVE_UNALIGNED_ACCESS 1
+diff --git a/plugins/tracers/gstrusage.c b/plugins/tracers/gstrusage.c
+--- a/plugins/tracers/gstrusage.c
++++ b/plugins/tracers/gstrusage.c
+@@ -276,10 +276,12 @@ gst_rusage_tracer_class_init (GstRUsageTracerClass * klass)
+ 
+   if ((num_cpus = sysconf (_SC_NPROCESSORS_ONLN)) == -1) {
+     GST_WARNING ("failed to get number of cpus online");
++#if !defined(__native_client__)
+     if ((num_cpus = sysconf (_SC_NPROCESSORS_CONF)) == -1) {
+       GST_WARNING ("failed to get number of cpus, assuming 1");
+       num_cpus = 1;
+     }
++#endif
+   }
+   GST_DEBUG ("rusage: num_cpus=%ld", num_cpus);
+ 
+diff --git a/gst/gst.c b/gst/gst.c
+--- a/gst/gst.c
++++ b/gst/gst.c
+@@ -686,7 +686,9 @@ init_post (GOptionContext * context, GOptionGroup * group, gpointer data,
+   g_type_class_ref (gst_allocator_flags_get_type ());
+   g_type_class_ref (gst_stream_flags_get_type ());
+   g_type_class_ref (gst_stream_type_get_type ());
++#if !defined(__native_client__)
+   g_type_class_ref (gst_stack_trace_flags_get_type ());
++#endif
+
+   _priv_gst_event_initialize ();
+   _priv_gst_buffer_initialize ();
+@@ -1134,7 +1136,9 @@ gst_deinit (void)
+   g_type_class_unref (g_type_class_peek (gst_allocator_flags_get_type ()));
+   g_type_class_unref (g_type_class_peek (gst_stream_flags_get_type ()));
+   g_type_class_unref (g_type_class_peek (gst_debug_color_mode_get_type ()));
++#if !defined(__native_client__)
+   g_type_class_unref (g_type_class_peek (gst_stack_trace_flags_get_type ()));
++#endif
+
+   gst_deinitialized = TRUE;
+   GST_INFO ("deinitialized GStreamer");
+diff --git a/gst/gstpoll.c b/gst/gstpoll.c
+--- a/gst/gstpoll.c
++++ b/gst/gstpoll.c
+@@ -60,6 +60,7 @@
+ #include "gst_private.h"
+ #include "glib-compat-private.h"
+
++#include <sys/select.h>
+ #include <sys/types.h>
+
+ #ifdef HAVE_UNISTD_H
+@@ -689,8 +690,15 @@ gst_poll_new (gboolean controllable)
+   {
+     gint control_sock[2];
+
++#if defined(__native_client__)
++    if (pipe (control_sock) < 0) {
++      GST_WARNING ("%p: can't pipe, errno: %d!", nset, errno);
++      goto no_socket_pair;
++    }
++#else
+     if (socketpair (PF_UNIX, SOCK_STREAM, 0, control_sock) < 0)
+       goto no_socket_pair;
++#endif
+
+     nset->control_read_fd.fd = control_sock[0];
+     nset->control_write_fd.fd = control_sock[1];
+ 

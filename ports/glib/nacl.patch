@@ -82,3 +82,15 @@ diff --git a/glib/gtypes.h b/glib/gtypes.h
  
  #  if __GNUC__ >= 4 && defined (__GNUC_MINOR__) && __GNUC_MINOR__ >= 3
  #    define GUINT32_SWAP_LE_BE(val) ((guint32) __builtin_bswap32 ((gint32) (val)))
+diff --git a/gobject/gtype.h b/gobject/gtype.h
+--- a/gobject/gtype.h
++++ b/gobject/gtype.h
+@@ -2040,7 +2040,7 @@ type_name##_get_type (void) \
+ /* Only use this in non-C++ on GCC >= 2.7, except for Darwin/ppc64.
+  * See https://bugzilla.gnome.org/show_bug.cgi?id=647145
+  */
+-#if !defined (__cplusplus) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 7)) && !(defined (__APPLE__) && defined (__ppc64__))
++#if !defined(__native_client__) && !defined (__cplusplus) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 7)) && !(defined (__APPLE__) && defined (__ppc64__))
+ #define _G_DEFINE_BOXED_TYPE_BEGIN(TypeName, type_name, copy_func, free_func) \
+ GType \
+ type_name##_get_type (void) \

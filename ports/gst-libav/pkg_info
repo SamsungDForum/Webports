@@ -1,0 +1,10 @@
+NAME=gst-libav
+VERSION=1.11.2
+URL=https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-1.11.2.tar.xz
+LICENSE=LGPL
+DEPENDS=(gstreamer ffmpeg gst-plugins-base glibc-compat)
+# gstreamer depends on glib, which  depends on the system gettext and for
+# some reason it can't detect this on mac.
+BUILD_OS=linux
+SHA1=49b4a6ead2b79db7b666ac60ac44df63303c0290
+DISABLED_TOOLCHAIN=(emscripten)

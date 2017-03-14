@@ -1,0 +1,47 @@
+diff --git a/gst-libs/gst/video/video-format.c b/gst-libs/gst/video/video-format.c
+--- a/gst-libs/gst/video/video-format.c
++++ b/gst-libs/gst/video/video-format.c
+@@ -322,9 +322,11 @@ unpack_VYUY (const GstVideoFormatInfo * info, GstVideoPackFlags flags,
+     width--;
+   }
+ 
++#if !defined(__native_client__)
+   if (IS_ALIGNED (d, 8))
+     video_orc_unpack_VYUY (d, s, width / 2);
+   else {
++#endif
+     gint i;
+ 
+     for (i = 0; i < width / 2; i++) {
+@@ -337,7 +339,9 @@ unpack_VYUY (const GstVideoFormatInfo * info, GstVideoPackFlags flags,
+       d[i * 8 + 6] = s[i * 4 + 0];
+       d[i * 8 + 7] = s[i * 4 + 2];
+     }
++#if !defined(__native_client__)
+   }
++#endif
+ 
+   if (width & 1) {
+     gint i = width - 1;
+@@ -358,9 +362,11 @@ pack_VYUY (const GstVideoFormatInfo * info, GstVideoPackFlags flags,
+   guint8 *restrict d = GET_LINE (y);
+   const guint8 *restrict s = src;
+ 
++#if !defined(__native_client__)
+   if (IS_ALIGNED (s, 8))
+     video_orc_pack_VYUY (d, s, width / 2);
+   else {
++#endif
+     gint i;
+     for (i = 0; i < width / 2; i++) {
+       d[i * 4 + 0] = s[i * 8 + 2];
+@@ -368,7 +374,9 @@ pack_VYUY (const GstVideoFormatInfo * info, GstVideoPackFlags flags,
+       d[i * 4 + 2] = s[i * 8 + 3];
+       d[i * 4 + 3] = s[i * 8 + 5];
+     }
++#if !defined(__native_client__)
+   }
++#endif
+   if (width & 1) {
+     gint i = width - 1;
+ 

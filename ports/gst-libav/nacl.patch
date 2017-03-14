@@ -1,0 +1,30 @@
+diff --git a/ext/libav/gstavutils.c b/ext/libav/gstavutils.c
+index 2f04abf..2f103b5 100644
+--- a/ext/libav/gstavutils.c
++++ b/ext/libav/gstavutils.c
+@@ -482,6 +482,8 @@ gst_ffmpeg_auto_max_threads (void)
+         n = 1;
+       }
+     }
++#elif defined(__native_client__)
++    n = 1;
+ #else
+     n = sysconf (_SC_NPROCESSORS_CONF);
+ #endif
+diff --git a/ext/libav/gstavdemux.c b/ext/libav/gstavdemux.c
+--- a/ext/libav/gstavdemux.c
++++ b/ext/libav/gstavdemux.c
+@@ -2069,6 +2069,12 @@ gst_ffmpegdemux_register (GstPlugin * plugin)
+         !strcmp (in_plugin->name, "yuv4mpegpipe") ||
+         !strcmp (in_plugin->name, "pva") ||
+         !strcmp (in_plugin->name, "mpc") ||
++#if defined(__native_client__)
++        !strcmp (in_plugin->name, "mov,mp4,m4a,3gp,3g2,mj2") ||
++        !strcmp (in_plugin->name, "matroska") ||
++        !strcmp (in_plugin->name, "matroska_webm") ||
++        !strcmp (in_plugin->name, "matroska,webm") ||
++#endif
+         !strcmp (in_plugin->name, "mpc8") || !strcmp (in_plugin->name, "ivf"))
+       rank = GST_RANK_MARGINAL;
+     else {
+ 

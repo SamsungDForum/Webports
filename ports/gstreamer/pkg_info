@@ -1,0 +1,10 @@
+NAME=gstreamer
+VERSION=1.11.2
+URL=https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.11.2.tar.xz
+LICENSE=LGPL
+DEPENDS=(glib glibc-compat)
+# gstreamer depends on glib, which  depends on the system gettext and for
+# some reason it can't detect this on mac.
+BUILD_OS=linux
+SHA1=d1289caec36529fb2ada53aefc1effa38cec48ad
+DISABLED_TOOLCHAIN=(emscripten)
