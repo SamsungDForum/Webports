@@ -3,8 +3,6 @@ VERSION=3.2.2
 URL=http://ffmpeg.org/releases/ffmpeg-3.2.2.tar.bz2
 LICENSE=GPL,LGPL
 CONFLICTS=(libav)
-# Disabled on arm due to non-optional arm in .S files.
-DISABLED_ARCH=(arm)
 DEPENDS=(lame libvorbis libtheora glibc-compat)
 SHA1=1fdf3a0e5f1700067ab8b8f0c77c5a4e4505b606
 DISABLED_TOOLCHAIN=(emscripten)

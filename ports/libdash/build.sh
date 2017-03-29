@@ -1,6 +1,8 @@
 #!/bin/bash
 
-EnableGlibcCompat
+if [ "${NACL_ARCH}" = "pnacl" ]; then
+  EnableGlibcCompat
+fi
 
 ConfigureStep() {
   SetupCrossEnvironment

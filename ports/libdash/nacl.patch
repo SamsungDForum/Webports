@@ -27,39 +27,45 @@ index 80f426b..852dd9e 100644
  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 diff --git a/libdash/libdash/CMakeLists.txt b/libdash/libdash/CMakeLists.txt
-index aeae94f..4d87370 100644
+dissimilarity index 65%
+index aeae94f..0a5bc9a 100644
 --- a/libdash/libdash/CMakeLists.txt
 +++ b/libdash/libdash/CMakeLists.txt
-@@ -1,14 +1,18 @@
- cmake_minimum_required(VERSION 2.8)
- 
+@@ -1,14 +1,17 @@
+-cmake_minimum_required(VERSION 2.8)
+-
 -find_package(LibXml2 REQUIRED)
 -find_package(ZLIB REQUIRED)
 -find_package(CURL REQUIRED)
 -
 -
- include_directories(include)
- 
- 
- file(GLOB_RECURSE libdash_source *.cpp)
- 
+-include_directories(include)
+-
+-
+-file(GLOB_RECURSE libdash_source *.cpp)
+-
 -add_library(dash SHARED ${libdash_source})
 -target_link_libraries(dash ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBXML2_LIBRARIES})
 \ No newline at end of file
-+add_library(dash STATIC ${libdash_source})
-+#target_link_libraries(dash ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBXML2_LIBRARIES})
++cmake_minimum_required(VERSION 2.8)
 +
-+target_link_libraries(dash curl glibc-compat ssl crypto xml2 z)
++include_directories(include)
++
++
++file(GLOB_RECURSE libdash_source *.cpp)
++
++add_library(dash STATIC ${libdash_source})
++
++target_link_libraries(dash curl ssl crypto xml2 z nacl_io)
 +
 +if ($ENV{NACL_ARCH} STREQUAL "pnacl")
-+    target_link_libraries(dash nacl_io)
++    target_link_libraries(dash glibc-compat)
 +endif ()
 +
 +install(TARGETS dash DESTINATION lib)
 +install(DIRECTORY include/ DESTINATION include/libdash)
-\ No newline at end of file
 diff --git a/libdash/libdash/include/IDASHManager.h b/libdash/libdash/include/IDASHManager.h
-index a2ed381..e5b4661 100644
+index a2ed381..475ca5b 100644
 --- a/libdash/libdash/include/IDASHManager.h
 +++ b/libdash/libdash/include/IDASHManager.h
 @@ -33,7 +33,16 @@ namespace dash
@@ -185,7 +191,7 @@ index 3120076..de07a31 100644
          this->host = host;
          this->port = port;
 diff --git a/libdash/libdash/source/mpd/SegmentTemplate.cpp b/libdash/libdash/source/mpd/SegmentTemplate.cpp
-index b92c469..98f7788 100644
+index b92c469..26b734d 100644
 --- a/libdash/libdash/source/mpd/SegmentTemplate.cpp
 +++ b/libdash/libdash/source/mpd/SegmentTemplate.cpp
 @@ -73,15 +73,15 @@ ISegment*           SegmentTemplate::GetIndexSegmentFromNumber      (const std::
@@ -363,19 +369,22 @@ index c005863..49fcc5c 100644
 \ No newline at end of file
 +#endif /* DOMPARSER_H_ */
 diff --git a/libdash/libdash_networkpart_test/CMakeLists.txt b/libdash/libdash_networkpart_test/CMakeLists.txt
-index 355a4f4..1ae4660 100644
+index 355a4f4..52c14b0 100644
 --- a/libdash/libdash_networkpart_test/CMakeLists.txt
 +++ b/libdash/libdash_networkpart_test/CMakeLists.txt
-@@ -4,4 +4,10 @@ cmake_minimum_required(VERSION 2.8)
+@@ -4,4 +4,13 @@ cmake_minimum_required(VERSION 2.8)
  file(GLOB_RECURSE networkpart_source *.cpp)
  
  add_executable(libdash_networkpart_test ${networkpart_source})
 -target_link_libraries(libdash_networkpart_test dash)
 \ No newline at end of file
-+target_link_libraries(libdash_networkpart_test dash)
 +
-+target_link_libraries(libdash_networkpart_test curl ssl crypto xml2 z)
++target_link_libraries(libdash_networkpart_test dash curl ssl crypto xml2 z nacl_io)
 +
 +if ($ENV{NACL_ARCH} STREQUAL "pnacl")
-+    target_link_libraries(libdash_networkpart_test nacl_io)
++    target_link_libraries(libdash_networkpart_test)
++endif ()
++
++if ($ENV{TOOLCHAIN} STREQUAL "glibc")
++    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lpthread")
 +endif ()

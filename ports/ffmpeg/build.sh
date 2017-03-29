@@ -9,6 +9,8 @@ ConfigureStep() {
 
   SetupCrossEnvironment
 
+  local lib_type="--enable-static"
+
   local extra_args=""
   if [ "${TOOLCHAIN}" = "pnacl" ]; then
     extra_args="--cc=pnacl-clang"
@@ -19,7 +21,10 @@ ConfigureStep() {
   if [ "${NACL_ARCH}" = "pnacl" ]; then
     extra_args+=" --arch=pnacl"
   elif [ "${NACL_ARCH}" = "arm" ]; then
-    extra_args+=" --arch=arm"
+    # inline-asm causes compilation problems under glibc-arm
+    # asm causes ncval validation errors for shared libs produced by glibc-arm
+    extra_args+=" --arch=arm --disable-asm"
+    lib_type="--enable-shared"
   else
     extra_args+=" --arch=x86"
   fi
@@ -29,7 +34,6 @@ ConfigureStep() {
     --target-os=linux \
     --disable-everything \
     --disable-programs \
-    --enable-static \
     --enable-cross-compile \
     --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
     --enable-encoder=aac,mpeg4,libx264 \
@@ -41,5 +45,6 @@ ConfigureStep() {
     --enable-filter=transpose \
     --disable-decoder=dpx \
     --prefix=${PREFIX} \
+    ${lib_type} \
     ${extra_args}
 }
