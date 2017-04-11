@@ -6,7 +6,6 @@
 EnableGlibcCompat
 
 ConfigureStep() {
-
   SetupCrossEnvironment
 
   local lib_type="--enable-static"
@@ -38,9 +37,9 @@ ConfigureStep() {
     --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
     --enable-encoder=aac,mpeg4,libx264 \
     --enable-protocol=concat,file \
-    --enable-demuxer=aac,avi,h264,hevc,image2,matroska,pcm_s16le,mov,m4v,rawvideo,wav \
+    --enable-demuxer=aac,ac3,avi,dts,dtshd,eac3,h264,hevc,image2,matroska,pcm_s16le,mov,mpegts,mpegtsraw,m4v,rawvideo,wav \
     --enable-muxer=h264,ipod,mov,mp4 \
-    --enable-parser=aac,h264,hevc,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
+    --enable-parser=aac,ac3,h264,hevc,mpegts,mpegtsraw,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
     --enable-bsf=aac_adtstoasc \
     --enable-filter=transpose \
     --disable-decoder=dpx \
