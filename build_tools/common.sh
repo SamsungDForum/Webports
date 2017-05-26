@@ -523,7 +523,7 @@ TryFetch() {
   local FILENAME=$2
   Banner "Fetching ${PACKAGE_NAME} (${FILENAME})"
   # Send curl's status messages to stdout rather then stderr
-  CURL_ARGS="--fail --location --stderr -"
+  CURL_ARGS="-k --fail --location --stderr -"
   if [ -t 1 ]; then
     # Add --progress-bar but only if stdout is a TTY device.
     CURL_ARGS+=" --progress-bar"

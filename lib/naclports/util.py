@@ -177,7 +177,7 @@ def DownloadFile(filename, url):
   temp_filename = filename + '.partial'
   # Ensure curl is in user's PATH
   FindInPath('curl')
-  curl_cmd = ['curl', '--fail', '--location', '--stderr', '-', '-o',
+  curl_cmd = ['curl', '-k', '--fail', '--location', '--stderr', '-', '-o',
               temp_filename]
   if hasattr(sys.stdout, 'fileno') and os.isatty(sys.stdout.fileno()):
     # Add --progress-bar but only if stdout is a TTY device.
