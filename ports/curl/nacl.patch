@@ -55,3 +55,15 @@ diff --git a/src/tool_main.c b/src/tool_main.c
  /*
  ** curl tool main function.
  */
+diff --git a/lib/mk-ca-bundle.pl b/lib/mk-ca-bundle.pl
+--- a/lib/mk-ca-bundle.pl
++++ b/lib/mk-ca-bundle.pl
+@@ -293,7 +293,7 @@ if($curl && !$opt_n) {
+   $https =~ s/^http:/https:/;
+   report "Get certdata over HTTPS with curl!";
+   my $quiet = $opt_q ? "-s" : "";
+-  my @out = `curl -w %{response_code} $quiet -O $https`;
++  my @out = `curl -k -w %{response_code} $quiet -O $https`;
+   if(@out && $out[0] == 200) {
+     $fetched = 1;
+   } else {
