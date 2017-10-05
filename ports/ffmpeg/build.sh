@@ -36,12 +36,13 @@ ConfigureStep() {
     --enable-cross-compile \
     --enable-decoder=aac,h264,mjpeg,mpeg2video,mpeg4 \
     --enable-encoder=aac,mpeg4,libx264 \
-    --enable-protocol=concat,file \
-    --enable-demuxer=aac,ac3,avi,dts,dtshd,eac3,h264,hevc,image2,matroska,pcm_s16le,mov,mpegts,mpegtsraw,m4v,rawvideo,wav \
+    --enable-protocol=concat,file,tcp \
+    --enable-demuxer=aac,ac3,avi,dts,dtshd,eac3,h264,hevc,hls,image2,matroska,pcm_s16le,mov,mpegts,mpegtsraw,m4v,rawvideo,rtp,rtsp,wav \
     --enable-muxer=h264,ipod,mov,mp4 \
     --enable-parser=aac,ac3,h264,hevc,mpegts,mpegtsraw,mjpeg,mpeg4video,mpegaudio,mpegvideo,png \
     --enable-bsf=aac_adtstoasc \
     --enable-filter=transpose \
+    --enable-network \
     --disable-decoder=dpx \
     --prefix=${PREFIX} \
     ${lib_type} \

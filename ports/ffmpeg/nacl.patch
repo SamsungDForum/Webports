@@ -114,6 +114,21 @@ index e5e7f42..9c760b3 100644
  enum AVSideDataParamChangeFlags {
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT  = 0x0001,
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT = 0x0002,
+diff --git a/libavformat/Makefile b/libavformat/Makefile
+index 5d827d3..ac39371 100644
+--- a/libavformat/Makefile
++++ b/libavformat/Makefile
+@@ -4,6 +4,10 @@ NAME = avformat
+
+ HEADERS = avformat.h                                                    \
+           avio.h                                                        \
++          rtpdec.h                                                      \
++          rtp.h                                                         \
++          srtp.h                                                        \
++          url.h                                                         \
+           version.h                                                     \
+
+ OBJS = allformats.o         \
 diff --git a/libavformat/avformat.h b/libavformat/avformat.h
 index f9f4d72..36032a1 100644
 --- a/libavformat/avformat.h
