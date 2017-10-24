@@ -1,0 +1,486 @@
+diff --git a/Makefile b/Makefile
+index 81023a3..5f03096 100644
+--- a/Makefile
++++ b/Makefile
+@@ -17,8 +17,8 @@ PREFIX ?= /usr/local
+ export PREFIX
+ 
+ all: 
+-	CPPFLAGS=$(CPPFLAGS) $(MAKE) -C $(top_srcdir)/cpp/build/ -$(MAKEFLAGS) 
+-	CPPFLAGS=$(CPPFLAGS) $(MAKE) -C $(top_srcdir)/cpp/examples/MinOZW/ -$(MAKEFLAGS) 
++	$(MAKE) -C $(top_srcdir)/cpp/build/ -$(MAKEFLAGS)
++	$(MAKE) -C $(top_srcdir)/cpp/examples/MinOZW/ -$(MAKEFLAGS)
+ 
+ install:
+ 	$(MAKE) -C $(top_srcdir)/cpp/build/ -$(MAKEFLAGS) $(MAKECMDGOALS)
+@@ -29,7 +29,7 @@ clean:
+ 	$(MAKE) -C $(top_srcdir)/cpp/examples/MinOZW/ -$(MAKEFLAGS) $(MAKECMDGOALS)
+ 
+ cpp/src/vers.cpp:
+-	CPPFLAGS=$(CPPFLAGS) $(MAKE) -C $(top_srcdir)/cpp/build/ -$(MAKEFLAGS) cpp/src/vers.cpp
++	$(MAKE) -C $(top_srcdir)/cpp/build/ -$(MAKEFLAGS) cpp/src/vers.cpp
+ 
+ check: xmltest
+ 
+diff --git a/cpp/build/Makefile b/cpp/build/Makefile
+index 774a477..bd867f0 100644
+--- a/cpp/build/Makefile
++++ b/cpp/build/Makefile
+@@ -62,7 +62,7 @@ SOURCES_HIDAPI =$(top_srcdir)/cpp/hidapi/mac
+ else ifeq ($(UNAME),FreeBSD)
+ SOURCES_HIDAPI =$(top_srcdir)/cpp/hidapi/libusb
+ else
+-SOURCES_HIDAPI =$(top_srcdir)/cpp/hidapi/linux
++SOURCES_HIDAPI =$(top_srcdir)/cpp/hidapi/nacl
+ endif
+ 
+ 
+@@ -79,7 +79,7 @@ hidapi := $(notdir $(wildcard $(top_srcdir)/cpp/hidapi/mac/*.c))
+ else ifeq ($(UNAME),FreeBSD)
+ hidapi := $(notdir $(wildcard $(top_srcdir)/cpp/hidapi/libusb/*.c))
+ else
+-hidapi := $(notdir $(wildcard $(top_srcdir)/cpp/hidapi/linux/*.c)) # we do not want the libusb version
++hidapi := $(notdir $(wildcard $(top_srcdir)/cpp/hidapi/nacl/*.c)) # we do not want the libusb version
+ endif
+ 
+ cclasses := $(notdir $(wildcard $(top_srcdir)/cpp/src/command_classes/*.cpp))
+@@ -90,7 +90,9 @@ indep := $(notdir $(filter-out $(top_srcdir)/cpp/src/vers.cpp, $(wildcard $(top_
+ aes := $(notdir $(wildcard $(top_srcdir)/cpp/src/aes/*.c))
+ 
+ 
+-default: printversion $(LIBDIR)/libopenzwave.a $(LIBDIR)/$(SHARED_LIB_NAME) $(top_builddir)/ozw_config
++#TODO build shared lib for glibc toolchain
++#default: printversion $(LIBDIR)/libopenzwave.a $(LIBDIR)/$(SHARED_LIB_NAME) $(top_builddir)/ozw_config
++default: printversion $(LIBDIR)/libopenzwave.a $(top_builddir)/ozw_config
+ 
+ clean:
+ 	@rm -rf $(DEPDIR) $(OBJDIR) $(LIBDIR)/libopenzwave.so* $(LIBDIR)/libopenzwave*.dylib $(LIBDIR)/libopenzwave.a $(top_builddir)/libopenzwave.pc $(top_builddir)/docs/api $(top_builddir)/Doxyfile $(top_srcdir)/cpp/src/vers.cpp
+@@ -128,7 +130,7 @@ $(LIBDIR)/libopenzwave.a:	$(patsubst %.cpp,$(OBJDIR)/%.o,$(tinyxml)) \
+ 			$(patsubst %.cpp,$(OBJDIR)/%.o,$(indep)) \
+ 			$(OBJDIR)/vers.o
+ 	@echo "Linking Static Library"
+-	@$(AR) $@ $+
++	@$(AR) rc $@ $+
+ 	@$(RANLIB) $@
+ 
+ $(LIBDIR)/$(SHARED_LIB_NAME):	$(patsubst %.cpp,$(OBJDIR)/%.o,$(tinyxml)) \
+@@ -187,11 +189,13 @@ doc: $(top_builddir)/Doxyfile
+ 	@cd $(top_builddir); $(DOXYGEN)
+ endif
+ 
+-install: $(LIBDIR)/$(SHARED_LIB_NAME) doc $(top_builddir)/libopenzwave.pc $(top_builddir)/ozw_config
++#TODO build shared lib for glibc toolchain
++#install: $(LIBDIR)/$(SHARED_LIB_NAME) doc $(top_builddir)/libopenzwave.pc $(top_builddir)/ozw_config
++install: doc $(top_builddir)/libopenzwave.pc $(top_builddir)/ozw_config
+ 	@echo "Installing Shared Library"
+ 	@install -d $(DESTDIR)/$(instlibdir)/
+-	@cp  $(LIBDIR)/$(SHARED_LIB_NAME) $(DESTDIR)/$(instlibdir)/$(SHARED_LIB_NAME)
+-	@ln -sf $(SHARED_LIB_NAME) $(DESTDIR)/$(instlibdir)/$(SHARED_LIB_UNVERSIONED)
++	#@cp  $(LIBDIR)/$(SHARED_LIB_NAME) $(DESTDIR)/$(instlibdir)/$(SHARED_LIB_NAME)
++	#@ln -sf $(SHARED_LIB_NAME) $(DESTDIR)/$(instlibdir)/$(SHARED_LIB_UNVERSIONED)
+ 	@echo "Installing Headers"
+ 	@install -d $(DESTDIR)/$(includedir)
+ 	@install -m 0644 $(top_srcdir)/cpp/src/*.h $(DESTDIR)/$(includedir)
+diff --git a/cpp/build/support.mk b/cpp/build/support.mk
+index 3f74c7e..8e99a8d 100644
+--- a/cpp/build/support.mk
++++ b/cpp/build/support.mk
+@@ -43,24 +43,24 @@ endif
+ # version number to use on the shared library
+ VERSION := $(VERSION_MAJ).$(VERSION_MIN)
+ 
+-# support Cross Compiling options
+-ifeq ($(UNAME),FreeBSD)
+-# Actually hide behind c++ which works for both clang based 10.0 and earlier(?)
+-CC     := $(CROSS_COMPILE)cc
+-CXX    := $(CROSS_COMPILE)c++
+-LD     := $(CROSS_COMPILE)c++
+-else
+-CC     := $(CROSS_COMPILE)gcc
+-CXX    := $(CROSS_COMPILE)g++
+-LD     := $(CROSS_COMPILE)g++
+-endif
+-ifeq ($(UNAME),Darwin)
+-AR     := libtool -static -o 
+-RANLIB := ranlib
+-else
+-AR     := $(CROSS_COMPILE)ar rc
+-RANLIB := $(CROSS_COMPILE)ranlib
+-endif
++## support Cross Compiling options
++#ifeq ($(UNAME),FreeBSD)
++## Actually hide behind c++ which works for both clang based 10.0 and earlier(?)
++#CC     := $(CROSS_COMPILE)cc
++#CXX    := $(CROSS_COMPILE)c++
++#LD     := $(CROSS_COMPILE)c++
++#else
++#CC     := $(CROSS_COMPILE)gcc
++#CXX    := $(CROSS_COMPILE)g++
++#LD     := $(CROSS_COMPILE)g++
++#endif
++#ifeq ($(UNAME),Darwin)
++#AR     := libtool -static -o
++#RANLIB := ranlib
++#else
++#AR     := $(CROSS_COMPILE)ar rc
++#RANLIB := $(CROSS_COMPILE)ranlib
++#endif
+ SED    := sed
+ 
+ 
+diff --git a/cpp/examples/MinOZW/Makefile b/cpp/examples/MinOZW/Makefile
+index f5111e0..60c3b57 100644
+--- a/cpp/examples/MinOZW/Makefile
++++ b/cpp/examples/MinOZW/Makefile
+@@ -19,7 +19,9 @@ top_srcdir := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../../)
+ 
+ 
+ INCLUDES	:= -I $(top_srcdir)/cpp/src -I $(top_srcdir)/cpp/tinyxml/ -I $(top_srcdir)/cpp/hidapi/hidapi/
+-LIBS =  $(wildcard $(LIBDIR)/*.so $(LIBDIR)/*.dylib $(top_builddir)/*.so $(top_builddir)/*.dylib $(top_builddir)/cpp/build/*.so $(top_builddir)/cpp/build/*.dylib )
++#TODO build shared lib for glibc toolchain
++#LIBS =  $(wildcard $(LIBDIR)/*.so $(LIBDIR)/*.dylib $(top_builddir)/*.so $(top_builddir)/*.dylib $(top_builddir)/cpp/build/*.so $(top_builddir)/cpp/build/*.dylib )
++LIBS =  $(wildcard $(LIBDIR)/*.a $(top_builddir)/*.a $(top_builddir)/cpp/build/*.a )
+ LIBSDIR = $(abspath $(dir $(firstword $(LIBS))))
+ minozwsrc := $(notdir $(wildcard $(top_srcdir)/cpp/examples/MinOZW/*.cpp))
+ VPATH := $(top_srcdir)/cpp/examples/MinOZW
+@@ -47,9 +49,12 @@ endif
+ LDFLAGS+= -lusb
+ endif
+ 
++#TODO build shared lib for glibc toolchain
++LDFLAGS+= -static
++
+ $(OBJDIR)/MinOZW:	$(patsubst %.cpp,$(OBJDIR)/%.o,$(minozwsrc))
+ 	@echo "Linking $(OBJDIR)/MinOZW"
+-	$(LD) $(LDFLAGS) $(TARCH) -o $@ $< $(LIBS) -pthread
++	$(LD) $(LDFLAGS) $(TARCH) -o $@ $< $(LIBS) -lpthread
+ 
+ $(top_builddir)/MinOZW: $(top_srcdir)/cpp/examples/MinOZW/MinOZW.in $(OBJDIR)/MinOZW
+ 	@echo "Creating Temporary Shell Launch Script"
+diff --git a/cpp/hidapi/Makefile.am b/cpp/hidapi/Makefile.am
+index cf4f7ca..4023e61 100644
+--- a/cpp/hidapi/Makefile.am
++++ b/cpp/hidapi/Makefile.am
+@@ -15,21 +15,23 @@ endif
+ 
+ SUBDIRS=
+ 
+-if OS_LINUX
+-SUBDIRS += linux libusb
+-endif
+-
+-if OS_DARWIN
+-SUBDIRS += mac
+-endif
++SUBDIRS += nacl
+ 
+-if OS_FREEBSD
+-SUBDIRS += libusb
+-endif
+-
+-if OS_WINDOWS
+-SUBDIRS += windows
+-endif
++#if OS_LINUX
++#SUBDIRS += linux libusb
++#endif
++#
++#if OS_DARWIN
++#SUBDIRS += mac
++#endif
++#
++#if OS_FREEBSD
++#SUBDIRS += libusb
++#endif
++#
++#if OS_WINDOWS
++#SUBDIRS += windows
++#endif
+ 
+ SUBDIRS += hidtest
+ 
+diff --git a/cpp/hidapi/nacl/hid.c b/cpp/hidapi/nacl/hid.c
+new file mode 100644
+index 0000000..42ab5e5
+--- /dev/null
++++ b/cpp/hidapi/nacl/hid.c
+@@ -0,0 +1,87 @@
++// Copyright 2017 Samsung Electronics. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "hidapi.h"
++
++struct hid_device_ {
++  int dev_id;
++};
++
++int hid_init(void) {
++  return -1;
++}
++
++int hid_exit(void) {
++  return -1;
++}
++
++struct hid_device_info * hid_enumerate(unsigned short vendor_id,
++                                       unsigned short product_id) {
++  return NULL;
++}
++
++void hid_free_enumeration(struct hid_device_info *devs) {
++}
++
++hid_device * hid_open(unsigned short vendor_id,
++                      unsigned short product_id,
++                      const wchar_t *serial_number) {
++  return NULL;
++}
++
++hid_device * hid_open_path(const char *path) {
++  return NULL;
++}
++
++int  hid_write(hid_device *device,
++               const unsigned char *data,
++               size_t length) {
++  return -1;
++}
++
++int hid_read_timeout(hid_device *dev,
++                     unsigned char *data,
++                     size_t length,
++                     int milliseconds) {
++  return -1;
++}
++
++int hid_read(hid_device *device, unsigned char *data, size_t length) {
++  return -1;
++}
++
++int hid_set_nonblocking(hid_device *device, int nonblock) {
++  return -1;
++}
++
++int hid_send_feature_report(hid_device *device, const unsigned char *data, size_t length) {
++  return -1;
++}
++
++int hid_get_feature_report(hid_device *device, unsigned char *data, size_t length) {
++  return -1;
++}
++
++void hid_close(hid_device *device) {
++}
++
++int hid_get_manufacturer_string(hid_device *device, wchar_t *string, size_t maxlen) {
++  return -1;
++}
++
++int hid_get_product_string(hid_device *device, wchar_t *string, size_t maxlen) {
++  return -1;
++}
++
++int hid_get_serial_number_string(hid_device *device, wchar_t *string, size_t maxlen) {
++  return -1;
++}
++
++int hid_get_indexed_string(hid_device *device, int string_index, wchar_t *string, size_t maxlen) {
++  return -1;
++}
++
++const wchar_t* hid_error(hid_device *device) {
++  return L"Not supported";
++}
+diff --git a/cpp/src/Driver.cpp b/cpp/src/Driver.cpp
+index c214639..5736fc3 100644
+--- a/cpp/src/Driver.cpp
++++ b/cpp/src/Driver.cpp
+@@ -36,7 +36,9 @@
+ 
+ #include "platform/Event.h"
+ #include "platform/Mutex.h"
++#if !defined(__native_client__)
+ #include "platform/SerialController.h"
++#endif
+ #ifdef WINRT
+ #include "platform/winRT/HidControllerWinRT.h"
+ #else
+@@ -227,10 +229,12 @@ m_nonceReportSentAttempt( 0 )
+ 	{
+ 		m_controller = new HidController();
+ 	}
++#if !defined(__native_client__)
+ 	else
+ 	{
+ 		m_controller = new SerialController();
+ 	}
++#endif
+ 	m_controller->SetSignalThreshold( 1 );
+ 
+ 	Options::Get()->GetOptionAsBool( "NotifyTransactions", &m_notifytransactions );
+diff --git a/cpp/src/aes/brg_endian.h b/cpp/src/aes/brg_endian.h
+index 4c34f2b..0c95152 100644
+--- a/cpp/src/aes/brg_endian.h
++++ b/cpp/src/aes/brg_endian.h
+@@ -33,7 +33,7 @@ Issue Date: 20/12/2007
+       defined( __CYGWIN32__ ) || defined( __DJGPP__ ) || defined( __osf__ )
+ #  include <machine/endian.h>
+ #elif defined( __linux__ ) || defined( __GNUC__ ) || defined( __GNU_LIBRARY__ )
+-#  if !defined( __MINGW32__ ) && !defined( _AIX )
++#  if !defined( __MINGW32__ ) && !defined( _AIX ) && !defined(__native_client__)
+ #    include <endian.h>
+ #    if !defined( __BEOS__ )
+ #      include <byteswap.h>
+diff --git a/cpp/src/platform/SerialController.cpp b/cpp/src/platform/SerialController.cpp
+index 18dff8c..ce16606 100644
+--- a/cpp/src/platform/SerialController.cpp
++++ b/cpp/src/platform/SerialController.cpp
+@@ -25,6 +25,8 @@
+ //
+ //-----------------------------------------------------------------------------
+ 
++#if !defined(__native_client__)
++
+ #include "Msg.h"
+ #include "platform/Event.h"
+ #include "platform/Thread.h"
+@@ -183,5 +185,5 @@ uint32 SerialController::Write
+ 	return( m_pImpl->Write( _buffer, _length ) );
+ }
+ 
+-
++#endif
+ 
+diff --git a/cpp/src/platform/SerialController.h b/cpp/src/platform/SerialController.h
+index 5d161f9..7984bd0 100644
+--- a/cpp/src/platform/SerialController.h
++++ b/cpp/src/platform/SerialController.h
+@@ -28,6 +28,8 @@
+ #ifndef _SerialController_H
+ #define _SerialController_H
+ 
++#if !defined(__native_client__)
++
+ #include <string>
+ #include "Defs.h"
+ #include "platform/Controller.h"
+@@ -134,5 +136,7 @@ namespace OpenZWave
+ 
+ } // namespace OpenZWave
+ 
++#endif
++
+ #endif //_SerialController_H
+ 
+diff --git a/cpp/src/platform/unix/EventImpl.cpp b/cpp/src/platform/unix/EventImpl.cpp
+index d9b5830..2dcfdb5 100644
+--- a/cpp/src/platform/unix/EventImpl.cpp
++++ b/cpp/src/platform/unix/EventImpl.cpp
+@@ -206,12 +206,16 @@ bool EventImpl::Wait
+             
+ 			while( !m_isSignaled )
+ 			{
++#if !defined(__native_client__)
+ 				int oldstate;
+ 				pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
++#endif
+ 
+ 				err = pthread_cond_timedwait( &m_condition, &m_lock, &abstime );
+ 
++#if !defined(__native_client__)
+ 				pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
++#endif
+ 
+ 				if( err == ETIMEDOUT )
+ 				{
+@@ -234,12 +238,16 @@ bool EventImpl::Wait
+ 		{
+ 			while( !m_isSignaled )
+ 			{
++#if !defined(__native_client__)
+ 				int oldstate;
+ 				pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
++#endif
+ 
+ 				err = pthread_cond_wait( &m_condition, &m_lock );
+ 
++#if !defined(__native_client__)
+ 				pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
++#endif
+ 
+ 				if( err != 0 )
+ 				{
+diff --git a/cpp/src/platform/unix/SerialControllerImpl.cpp b/cpp/src/platform/unix/SerialControllerImpl.cpp
+index d95f848..11f1bd9 100644
+--- a/cpp/src/platform/unix/SerialControllerImpl.cpp
++++ b/cpp/src/platform/unix/SerialControllerImpl.cpp
+@@ -25,6 +25,9 @@
+ //	along with OpenZWave.  If not, see <http://www.gnu.org/licenses/>.
+ //
+ //-----------------------------------------------------------------------------
++
++#if !defined(__native_client__)
++
+ #include <unistd.h>
+ #include <pthread.h>
+ #include "Defs.h"
+@@ -367,3 +370,5 @@ uint32 SerialControllerImpl::Write
+ 	bytesWritten = write( m_hSerialController, _buffer, _length);
+ 	return bytesWritten;
+ }
++
++#endif
+diff --git a/cpp/src/platform/unix/SerialControllerImpl.h b/cpp/src/platform/unix/SerialControllerImpl.h
+index 6043403..d812f3d 100644
+--- a/cpp/src/platform/unix/SerialControllerImpl.h
++++ b/cpp/src/platform/unix/SerialControllerImpl.h
+@@ -28,6 +28,8 @@
+ #ifndef _SerialControllerImpl_H
+ #define _SerialControllerImpl_H
+ 
++#if !defined(__native_client)
++
+ #include <strings.h>
+ #include <termios.h>
+ #include <errno.h>
+@@ -72,3 +74,4 @@ namespace OpenZWave
+ 
+ #endif //_SerialControllerImpl_H
+ 
++#endif
+diff --git a/cpp/src/platform/unix/ThreadImpl.cpp b/cpp/src/platform/unix/ThreadImpl.cpp
+index 5d268b3..8d23ebd 100644
+--- a/cpp/src/platform/unix/ThreadImpl.cpp
++++ b/cpp/src/platform/unix/ThreadImpl.cpp
+@@ -117,7 +117,9 @@ bool ThreadImpl::Terminate
+ 
+ 	//m_hThread = NULL;
+ 	m_bIsRunning = false;
++#if !defined(__native_client__)
+ 	pthread_cancel( m_hThread );
++#endif
+ 	pthread_join( m_hThread, &data );
+ 
+ 	return true;
+diff --git a/cpp/tinyxml/Makefile b/cpp/tinyxml/Makefile
+index 58e3784..e4dc558 100644
+--- a/cpp/tinyxml/Makefile
++++ b/cpp/tinyxml/Makefile
+@@ -19,11 +19,11 @@ TINYXML_USE_STL := YES
+ 
+ #****************************************************************************
+ 
+-CC     := gcc
+-CXX    := g++
+-LD     := g++
+-AR     := ar rc
+-RANLIB := ranlib
++#CC     := gcc
++#CXX    := g++
++#LD     := g++
++#AR     := ar rc
++#RANLIB := ranlib
+ 
+ DEBUG_CFLAGS     := -Wall -Wno-format -g -DDEBUG $(CPPFLAGS)
+ RELEASE_CFLAGS   := -Wall -Wno-unknown-pragmas -Wno-format -O3 $(CPPFLAGS)
