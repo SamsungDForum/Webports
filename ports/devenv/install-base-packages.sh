@@ -10,8 +10,8 @@
 set -e
 
 CheckNaClEnabled() {
-  # Skip check on if this isn't newlib.
-  if [[ ${TOOLCHAIN} != newlib ]]; then
+  # Skip check on if this isn't newlib or glibc.
+  if [[ ${TOOLCHAIN} != newlib && ${TOOLCHAIN} != glibc ]]; then
     return
   fi
   TMP_CHECK_FILE="/tmp/.enable_nacl_check.nexe"
@@ -30,7 +30,7 @@ CheckNaClEnabled() {
     echo "  chrome://flags"
     echo "You must then restart your browser."
     echo
-    echo "Eventually this should not be required."
+    echo "Eventually this may not be required."
     echo "Follow this issue: https://crbug.com/477808"
     echo
     echo "*********************** ERROR ***********************"
@@ -52,24 +52,16 @@ InstallBasePackages() {
     git \
     make"
 
-  if [[ -f /usr/etc/pkg/repos/NaCl.conf ]]; then
-    pkg install -y $core_packages
-  else
-    if [ "${NACL_DEVENV_LOCAL:-}" = "1" ]; then
-      local repos_dir=/mnt/http/repos_local_${NACL_ARCH}
-    else
-      local repos_dir=/mnt/http/repos_${NACL_ARCH}
-    fi
-    pkg -R $repos_dir install -y $core_packages
+  pkg install -y $core_packages
 
-    echo "===> Setting up pkg"
-    # Now that we have coreutils installed we can copy the pkg config
-    # files into place with 'cp'
-    mkdir -p /usr/etc/pkg/repos
-    rm -f /usr/etc/pkg/repos/NaCl.conf
-    cp $repos_dir/NaCl.conf /usr/etc/pkg/repos/
-    pkg update
-  fi
+  # Some programs (noteabley make) expect /bin/sh and /bin/bash to exist and use
+  # this to run command (even if SHELL is set)
+  # TODO(sbc): This should be a symlink, or at least install via a post
+  # install script.
+  rm -f /bin/sh
+  cp /usr/bin/bash /bin/sh
+  rm -f /bin/bash
+  cp /usr/bin/bash /bin/bash
 
   echo "===> Installing extra packages"
   local extra_packages="

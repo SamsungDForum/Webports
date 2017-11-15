@@ -3,5 +3,5 @@
 # found in the LICENSE file.
 
 EXECUTABLES="mp4tags${NACL_EXEEXT} mp4info${NACL_EXEEXT}"
-
+NACLPORTS_CPPFLAGS+=" ${NACL_EXCEPTIONS_FLAG}"
 EnableGlibcCompat

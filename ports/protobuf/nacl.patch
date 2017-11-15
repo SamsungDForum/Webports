@@ -1,9 +1,101 @@
+diff --git a/configure b/configure
+--- a/configure
++++ b/configure
+@@ -7179,7 +7179,8 @@ irix5* | irix6* | nonstopux*)
+   ;;
+ 
+ # This must be glibc/ELF.
+-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
++# Patched by naclports using patch_configure.py
++linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu* | nacl*)
+   lt_cv_deplibs_check_method=pass_all
+   ;;
+ 
+@@ -12407,6 +12408,18 @@ uts4*)
+   shlibpath_var=LD_LIBRARY_PATH
+   ;;
+ 
++nacl)
++  # Patched by naclports using patch_configure.py
++  if libc_so=`$CC -print-file-name=libc.so` && [ "$libc_so" != libc.so ]; then
++    dynamic_linker="GNU/NaCl ld.so"
++    version_type=linux
++    library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
++    soname_spec='${libname}${release}${shared_ext}$major'
++  else
++    dynamic_linker=no
++  fi
++  ;;
++
+ *)
+   dynamic_linker=no
+   ;;
+@@ -16239,6 +16252,18 @@ uts4*)
+   shlibpath_var=LD_LIBRARY_PATH
+   ;;
+ 
++nacl)
++  # Patched by naclports using patch_configure.py
++  if libc_so=`$CC -print-file-name=libc.so` && [ "$libc_so" != libc.so ]; then
++    dynamic_linker="GNU/NaCl ld.so"
++    version_type=linux
++    library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
++    soname_spec='${libname}${release}${shared_ext}$major'
++  else
++    dynamic_linker=no
++  fi
++  ;;
++
+ *)
+   dynamic_linker=no
+   ;;
+@@ -17357,40 +17382,6 @@ $as_echo "$as_me: WARNING: Impossible to determine how to use pthreads with shar
+ 	   acx_pthread_ok=no
+ 	fi
+ 
+-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether what we have so far is sufficient with -nostdlib" >&5
+-$as_echo_n "checking whether what we have so far is sufficient with -nostdlib... " >&6; }
+-	CFLAGS="-nostdlib $CFLAGS"
+-	# we need c with nostdlib
+-	LIBS="$LIBS -lc"
+-	cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+-/* end confdefs.h.  */
+-#include <pthread.h>
+-int
+-main ()
+-{
+-pthread_t th; pthread_join(th, 0);
+-	       pthread_attr_init(0); pthread_cleanup_push(0, 0);
+-	       pthread_create(0,0,0,0); pthread_cleanup_pop(0);
+-  ;
+-  return 0;
+-}
+-_ACEOF
+-if ac_fn_c_try_link "$LINENO"; then :
+-  done=yes
+-else
+-  done=no
+-fi
+-rm -f core conftest.err conftest.$ac_objext \
+-    conftest$ac_exeext conftest.$ac_ext
+-
+-	if test "x$done" = xyes; then
+-	   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+-$as_echo "yes" >&6; }
+-	else
+-	   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+-$as_echo "no" >&6; }
+-	fi
+-
+ 	if test x"$done" = xno; then
+ 	   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether -lpthread saves the day" >&5
+ $as_echo_n "checking whether -lpthread saves the day... " >&6; }
 diff --git a/src/google/protobuf/compiler/command_line_interface_unittest.cc b/src/google/protobuf/compiler/command_line_interface_unittest.cc
 --- a/src/google/protobuf/compiler/command_line_interface_unittest.cc
 +++ b/src/google/protobuf/compiler/command_line_interface_unittest.cc
-@@ -64,6 +64,10 @@
- #include <gtest/gtest.h>
- 
+@@ -67,6 +67,10 @@ namespace google {
+ namespace protobuf {
+ namespace compiler {
  
 +// Disable this whole test when running on Native Client since it doesn't
 +// support fork/spawning new processing.
@@ -12,38 +104,38 @@ diff --git a/src/google/protobuf/compiler/command_line_interface_unittest.cc b/s
  // Disable the whole test when we use tcmalloc for "draconian" heap checks, in
  // which case tcmalloc will print warnings that fail the plugin tests.
  #if !GOOGLE_PROTOBUF_HEAP_CHECK_DRACONIAN
-@@ -1669,3 +1673,4 @@ TEST_F(EncodeDecodeTest, ProtoParseError) {
- }  // namespace google
+@@ -1822,6 +1826,7 @@ TEST_F(EncodeDecodeTest, ProtoParseError) {
  
- #endif // !GOOGLE_PROTOBUF_HEAP_CHECK_DRACONIAN
-+#endif
+ }  // anonymous namespace
+ 
++#endif  // !__native_client__
+ #endif  // !GOOGLE_PROTOBUF_HEAP_CHECK_DRACONIAN
+ 
+ }  // namespace compiler
 diff --git a/src/google/protobuf/compiler/ruby/ruby_generator_unittest.cc b/src/google/protobuf/compiler/ruby/ruby_generator_unittest.cc
 --- a/src/google/protobuf/compiler/ruby/ruby_generator_unittest.cc
 +++ b/src/google/protobuf/compiler/ruby/ruby_generator_unittest.cc
-@@ -45,6 +45,10 @@ namespace compiler {
- namespace ruby {
- namespace {
+@@ -39,6 +39,10 @@
+ #include <gtest/gtest.h>
+ #include <google/protobuf/testing/file.h>
  
 +// Don't try to run ruby tests.  The source distribution doesn't seem to
 +// contain the ruby test data at all
 +#if !defined(__native_client__)
 +
- string FindRubyTestDir() {
-   // Inspired by TestSourceDir() in src/google/protobuf/testing/googletest.cc.
-   string prefix = ".";
-@@ -112,6 +116,8 @@ TEST(RubyGeneratorTest, GeneratorTest) {
-   EXPECT_EQ(expected_output, output);
- }
- 
-+#endif  // __native_client__
-+
- }  // namespace
- }  // namespace ruby
+ namespace google {
+ namespace protobuf {
+ namespace compiler {
+@@ -121,3 +125,5 @@ TEST(RubyGeneratorTest, GeneratorTest) {
  }  // namespace compiler
+ }  // namespace protobuf
+ }  // namespace google
++
++#endif  // __native_client__
 diff --git a/src/google/protobuf/io/zero_copy_stream_unittest.cc b/src/google/protobuf/io/zero_copy_stream_unittest.cc
 --- a/src/google/protobuf/io/zero_copy_stream_unittest.cc
 +++ b/src/google/protobuf/io/zero_copy_stream_unittest.cc
-@@ -843,6 +843,9 @@ TEST_F(IoTest, FileWriteError) {
+@@ -848,6 +848,9 @@ TEST_F(IoTest, FileWriteError) {
    EXPECT_EQ(EBADF, input.GetErrno());
  }
  
@@ -53,7 +145,7 @@ diff --git a/src/google/protobuf/io/zero_copy_stream_unittest.cc b/src/google/pr
  // Pipes are not seekable, so File{Input,Output}Stream ends up doing some
  // different things to handle them.  We'll test by writing to a pipe and
  // reading back from it.
-@@ -871,6 +874,7 @@ TEST_F(IoTest, PipeIo) {
+@@ -876,6 +879,7 @@ TEST_F(IoTest, PipeIo) {
      }
    }
  }
@@ -64,7 +156,7 @@ diff --git a/src/google/protobuf/io/zero_copy_stream_unittest.cc b/src/google/pr
 diff --git a/src/google/protobuf/message_unittest.cc b/src/google/protobuf/message_unittest.cc
 --- a/src/google/protobuf/message_unittest.cc
 +++ b/src/google/protobuf/message_unittest.cc
-@@ -108,6 +108,7 @@ TEST(MessageTest, ParseFromFileDescriptor) {
+@@ -110,6 +110,7 @@ TEST(MessageTest, ParseFromFileDescriptor) {
    string filename = TestSourceDir() +
                      "/google/protobuf/testdata/golden_message";
    int file = open(filename.c_str(), O_RDONLY | O_BINARY);
@@ -72,7 +164,7 @@ diff --git a/src/google/protobuf/message_unittest.cc b/src/google/protobuf/messa
  
    unittest::TestAllTypes message;
    EXPECT_TRUE(message.ParseFromFileDescriptor(file));
-@@ -121,6 +122,7 @@ TEST(MessageTest, ParsePackedFromFileDescriptor) {
+@@ -123,6 +124,7 @@ TEST(MessageTest, ParsePackedFromFileDescriptor) {
        TestSourceDir() +
        "/google/protobuf/testdata/golden_packed_fields_message";
    int file = open(filename.c_str(), O_RDONLY | O_BINARY);
@@ -83,225 +175,15 @@ diff --git a/src/google/protobuf/message_unittest.cc b/src/google/protobuf/messa
 diff --git a/src/google/protobuf/stubs/atomicops.h b/src/google/protobuf/stubs/atomicops.h
 --- a/src/google/protobuf/stubs/atomicops.h
 +++ b/src/google/protobuf/stubs/atomicops.h
-@@ -209,7 +209,7 @@ GOOGLE_PROTOBUF_ATOMICOPS_ERROR
- #include <google/protobuf/stubs/atomicops_internals_arm_qnx.h>
- #elif defined(GOOGLE_PROTOBUF_ARCH_MIPS) || defined(GOOGLE_PROTOBUF_ARCH_MIPS64)
+@@ -212,7 +212,7 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
  #include <google/protobuf/stubs/atomicops_internals_mips_gcc.h>
+ #elif defined(GOOGLE_PROTOBUF_ARCH_POWER)
+ #include <google/protobuf/stubs/atomicops_internals_power.h>
 -#elif defined(__native_client__)
 +#elif defined(__pnacl__)
  #include <google/protobuf/stubs/atomicops_internals_pnacl.h>
  #elif (((__GNUC__ == 4) && (__GNUC_MINOR__ >= 7)) || (__GNUC__ > 4))
  #include <google/protobuf/stubs/atomicops_internals_generic_gcc.h>
-diff --git a/src/google/protobuf/stubs/atomicops_internals_pnacl.h b/src/google/protobuf/stubs/atomicops_internals_pnacl.h
---- a/src/google/protobuf/stubs/atomicops_internals_pnacl.h
-+++ b/src/google/protobuf/stubs/atomicops_internals_pnacl.h
-@@ -33,39 +33,197 @@
- #ifndef GOOGLE_PROTOBUF_ATOMICOPS_INTERNALS_PNACL_H_
- #define GOOGLE_PROTOBUF_ATOMICOPS_INTERNALS_PNACL_H_
- 
-+#include <atomic>
-+
- namespace google {
- namespace protobuf {
- namespace internal {
- 
-+// This implementation is transitional and maintains the original API for
-+// atomicops.h. This requires casting memory locations to the atomic types, and
-+// assumes that the API and the C++11 implementation are layout-compatible,
-+// which isn't true for all implementations or hardware platforms. The static
-+// assertion should detect this issue, were it to fire then this header
-+// shouldn't be used.
-+//
-+// TODO(jfb) If this header manages to stay committed then the API should be
-+//           modified, and all call sites updated.
-+typedef volatile std::atomic<Atomic32>* AtomicLocation32;
-+static_assert(sizeof(*(AtomicLocation32) nullptr) == sizeof(Atomic32),
-+              "incompatible 32-bit atomic layout");
-+
-+inline void MemoryBarrier() {
-+#if defined(__GLIBCXX__)
-+  // Work around libstdc++ bug 51038 where atomic_thread_fence was declared but
-+  // not defined, leading to the linker complaining about undefined references.
-+  __atomic_thread_fence(std::memory_order_seq_cst);
-+#else
-+  std::atomic_thread_fence(std::memory_order_seq_cst);
-+#endif
-+}
-+
- inline Atomic32 NoBarrier_CompareAndSwap(volatile Atomic32* ptr,
-                                          Atomic32 old_value,
-                                          Atomic32 new_value) {
--  return __sync_val_compare_and_swap(ptr, old_value, new_value);
-+  ((AtomicLocation32)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_relaxed,
-+                                std::memory_order_relaxed);
-+  return old_value;
- }
- 
--inline void MemoryBarrier() {
--  __sync_synchronize();
-+inline Atomic32 NoBarrier_AtomicExchange(volatile Atomic32* ptr,
-+                                         Atomic32 new_value) {
-+  return ((AtomicLocation32)ptr)
-+      ->exchange(new_value, std::memory_order_relaxed);
-+}
-+
-+inline Atomic32 NoBarrier_AtomicIncrement(volatile Atomic32* ptr,
-+                                          Atomic32 increment) {
-+  return increment +
-+         ((AtomicLocation32)ptr)
-+             ->fetch_add(increment, std::memory_order_relaxed);
-+}
-+
-+inline Atomic32 Barrier_AtomicIncrement(volatile Atomic32* ptr,
-+                                        Atomic32 increment) {
-+  return increment + ((AtomicLocation32)ptr)->fetch_add(increment);
- }
- 
- inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr,
-                                        Atomic32 old_value,
-                                        Atomic32 new_value) {
--  Atomic32 ret = NoBarrier_CompareAndSwap(ptr, old_value, new_value);
-+  ((AtomicLocation32)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_acquire,
-+                                std::memory_order_acquire);
-+  return old_value;
-+}
-+
-+inline Atomic32 Release_CompareAndSwap(volatile Atomic32* ptr,
-+                                       Atomic32 old_value,
-+                                       Atomic32 new_value) {
-+  ((AtomicLocation32)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_release,
-+                                std::memory_order_relaxed);
-+  return old_value;
-+}
-+
-+inline void NoBarrier_Store(volatile Atomic32* ptr, Atomic32 value) {
-+  ((AtomicLocation32)ptr)->store(value, std::memory_order_relaxed);
-+}
-+
-+inline void Acquire_Store(volatile Atomic32* ptr, Atomic32 value) {
-+  ((AtomicLocation32)ptr)->store(value, std::memory_order_relaxed);
-   MemoryBarrier();
--  return ret;
- }
- 
- inline void Release_Store(volatile Atomic32* ptr, Atomic32 value) {
--  MemoryBarrier();
--  *ptr = value;
-+  ((AtomicLocation32)ptr)->store(value, std::memory_order_release);
-+}
-+
-+inline Atomic32 NoBarrier_Load(volatile const Atomic32* ptr) {
-+  return ((AtomicLocation32)ptr)->load(std::memory_order_relaxed);
- }
- 
- inline Atomic32 Acquire_Load(volatile const Atomic32* ptr) {
--  Atomic32 value = *ptr;
-+  return ((AtomicLocation32)ptr)->load(std::memory_order_acquire);
-+}
-+
-+inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
-+  MemoryBarrier();
-+  return ((AtomicLocation32)ptr)->load(std::memory_order_relaxed);
-+}
-+
-+#if defined(GOOGLE_PROTOBUF_ARCH_64_BIT)
-+
-+typedef volatile std::atomic<Atomic64>* AtomicLocation64;
-+static_assert(sizeof(*(AtomicLocation64) nullptr) == sizeof(Atomic64),
-+              "incompatible 64-bit atomic layout");
-+
-+inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
-+                                         Atomic64 old_value,
-+                                         Atomic64 new_value) {
-+  ((AtomicLocation64)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_relaxed,
-+                                std::memory_order_relaxed);
-+  return old_value;
-+}
-+
-+inline Atomic64 NoBarrier_AtomicExchange(volatile Atomic64* ptr,
-+                                         Atomic64 new_value) {
-+  return ((AtomicLocation64)ptr)
-+      ->exchange(new_value, std::memory_order_relaxed);
-+}
-+
-+inline Atomic64 NoBarrier_AtomicIncrement(volatile Atomic64* ptr,
-+                                          Atomic64 increment) {
-+  return increment +
-+         ((AtomicLocation64)ptr)
-+             ->fetch_add(increment, std::memory_order_relaxed);
-+}
-+
-+inline Atomic64 Barrier_AtomicIncrement(volatile Atomic64* ptr,
-+                                        Atomic64 increment) {
-+  return increment + ((AtomicLocation64)ptr)->fetch_add(increment);
-+}
-+
-+inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,
-+                                       Atomic64 old_value,
-+                                       Atomic64 new_value) {
-+  ((AtomicLocation64)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_acquire,
-+                                std::memory_order_acquire);
-+  return old_value;
-+}
-+
-+inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
-+                                       Atomic64 old_value,
-+                                       Atomic64 new_value) {
-+  ((AtomicLocation64)ptr)
-+      ->compare_exchange_strong(old_value,
-+                                new_value,
-+                                std::memory_order_release,
-+                                std::memory_order_relaxed);
-+  return old_value;
-+}
-+
-+inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
-+  ((AtomicLocation64)ptr)->store(value, std::memory_order_relaxed);
-+}
-+
-+inline void Acquire_Store(volatile Atomic64* ptr, Atomic64 value) {
-+  ((AtomicLocation64)ptr)->store(value, std::memory_order_relaxed);
-   MemoryBarrier();
--  return value;
- }
- 
-+inline void Release_Store(volatile Atomic64* ptr, Atomic64 value) {
-+  ((AtomicLocation64)ptr)->store(value, std::memory_order_release);
-+}
-+
-+inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
-+  return ((AtomicLocation64)ptr)->load(std::memory_order_relaxed);
-+}
-+
-+inline Atomic64 Acquire_Load(volatile const Atomic64* ptr) {
-+  return ((AtomicLocation64)ptr)->load(std::memory_order_acquire);
-+}
-+
-+inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
-+  MemoryBarrier();
-+  return ((AtomicLocation64)ptr)->load(std::memory_order_relaxed);
-+}
-+
-+#endif  // defined(GOOGLE_PROTOBUF_ARCH_64_BIT)
-+
- }  // namespace internal
- }  // namespace protobuf
- }  // namespace google
 diff --git a/src/google/protobuf/stubs/stringprintf_unittest.cc b/src/google/protobuf/stubs/stringprintf_unittest.cc
 --- a/src/google/protobuf/stubs/stringprintf_unittest.cc
 +++ b/src/google/protobuf/stubs/stringprintf_unittest.cc

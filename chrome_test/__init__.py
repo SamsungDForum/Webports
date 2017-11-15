@@ -17,7 +17,6 @@ import threading
 import urllib
 import urllib2
 import urlparse
-import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)
@@ -25,16 +24,11 @@ sys.path.insert(0, os.path.join(SRC_DIR, 'build_tools'))
 sys.path.insert(0, os.path.join(SRC_DIR, 'lib'))
 
 import httpd
-import naclports
+import download_chrome
 
 # Pinned chrome revision. Update this to pull in a new chrome.
 # Try to select a version that exists on all platforms.
-CHROME_REVISION = '311001'
-
-CHROME_SYNC_DIR = os.path.join(naclports.paths.OUT_DIR, 'downloaded_chrome')
-
-GS_URL = 'http://storage.googleapis.com'
-CHROME_URL_FORMAT = GS_URL + '/chromium-browser-continuous/%s/%s/%s'
+CHROME_REVISION = '344999'
 
 TESTING_LIB = os.path.join(SCRIPT_DIR, 'chrome_test.js')
 TESTING_EXTENSION = os.path.join(SCRIPT_DIR, 'extension')
@@ -50,57 +44,11 @@ LOG_LEVEL_MAP = {
 }
 
 
-def ChromeUrl(arch):
-  """Get the URL to download chrome from.
-
-  Args:
-    arch: Chrome architecture to select i686/x86_64/pnacl.
-  Returns:
-    URL to download a zip file from.
-  """
-  if sys.platform == 'win32':
-    filename = 'chrome-win32.zip'
-    target = 'Win_x64'
-  elif sys.platform == 'darwin':
-    filename = 'chrome-mac.zip'
-    target = 'Mac'
-  elif sys.platform.startswith('linux'):
-    filename = 'chrome-linux.zip'
-    if arch == 'i686':
-      target = 'Linux'
-    elif arch == 'x86_64' or arch == 'pnacl':
-      # Arbitrarily decide we will use 64-bit Linux for PNaCl.
-      target = 'Linux_x64'
-    else:
-      logging.error('Bad architecture %s' % arch)
-      sys.exit(1)
-  else:
-    logging.error('Unsupported platform %s' % sys.platform)
-    sys.exit(1)
-  return CHROME_URL_FORMAT % (target, CHROME_REVISION, filename)
-
-
-def ChromeDir(arch):
-  """Get the directory to sync chrome to."""
-  return os.path.join(CHROME_SYNC_DIR, arch)
-
-
-def ChromeArchiveRoot():
-  if sys.platform == 'win32':
-    return 'chrome-win32'
-  elif sys.platform == 'darwin':
-    return 'chrome-mac'
-  elif sys.platform.startswith('linux'):
-    return 'chrome-linux'
-  else:
-    logging.error('Unknown platform: %s' % sys.platform)
-    sys.exit(1)
-
-
-def ChromeRunPath(arch):
+def chrome_run_path(chrome_dir, arch):
   """Get the path to the chrome exectuable.
 
   Args:
+    chrome_dir: Root directory of chrome installation
     arch: Chrome architecture to select i686/x86_64.
   Returns:
     Path to the chrome executable.
@@ -114,93 +62,10 @@ def ChromeRunPath(arch):
   else:
     logging.error('Unknown platform: %s' % sys.platform)
     sys.exit(1)
-  return os.path.join(ChromeDir(arch), ChromeArchiveRoot(), path)
+  return os.path.join(chrome_dir, path)
 
 
-def DownloadChrome(url, destination):
-  """Download chrome.
-
-  Download chrome to a particular destination, leaving a stamp containing the
-  download URL. Download is skipped if the stamp matches the URL.
-  Args:
-    url: URL to download chrome from.
-    destination: A directory to download chrome to.
-  """
-  stamp_filename = os.path.join(destination, 'STAMP')
-  # Change this line each time the mods we make to the chrome checkout change
-  # otherwise the modding code will be skipped.
-  stamp_content = 'mods_v2:' + url
-  if os.path.exists(stamp_filename):
-    with open(stamp_filename) as f:
-      if f.read() == stamp_content:
-        logging.info('Skipping chrome download, '
-                     'chrome in %s is up to date' % destination)
-        return
-  if os.path.exists(destination):
-    logging.info('Deleting old chrome...')
-    shutil.rmtree(destination)
-
-  logging.info('Creating %s' % destination)
-  os.makedirs(destination)
-
-  logging.info('Downloading chrome from %s to %s...' % (url, destination))
-  chrome_zip = os.path.join(naclports.paths.CACHE_ROOT, os.path.basename(url))
-  naclports.util.Makedirs(os.path.dirname(chrome_zip))
-  try:
-    naclports.util.DownloadFile(chrome_zip, url)
-  except naclports.error.Error as e:
-    logging.error('Unable to download chrome: %s' % str(e))
-    sys.exit(1)
-
-  pnacl_url = os.path.join(os.path.dirname(url), 'pnacl.zip')
-  pnacl_zip = os.path.join(naclports.paths.CACHE_ROOT, 'pnacl.zip')
-  logging.info('Downloading pnacl component from %s ...' % url)
-  try:
-    naclports.util.DownloadFile(pnacl_zip, pnacl_url)
-  except naclports.error.Error as e:
-    logging.error('Unable to download chrome: %s' % str(e))
-    sys.exit(1)
-
-  logging.info('Extracting %s' % chrome_zip)
-  with zipfile.ZipFile(chrome_zip) as zip_archive:
-    zip_archive.extractall(destination)
-    # Change the executables to be executable.
-    for root, _, files in os.walk(destination):
-      for filename in files:
-        if (filename.startswith('Chromium') or
-            filename in ('chrome-wrapper', 'chrome', 'nacl_helper',
-                         'nacl_helper_bootstrap')):
-          path = os.path.join(root, filename)
-          os.chmod(path, 0755)
-
-    if sys.platform.startswith('linux'):
-      if '64' in url:
-        libudev0 = '/lib/x86_64-linux-gnu/libudev.so.0'
-        libudev1 = '/lib/x86_64-linux-gnu/libudev.so.1'
-      else:
-        libudev0 = '/lib/i386-linux-gnu/libudev.so.0'
-        libudev1 = '/lib/i386-linux-gnu/libudev.so.1'
-      if os.path.exists(libudev1) and not os.path.exists(libudev0):
-        link = os.path.join(destination, 'chrome-linux', 'libudev.so.0')
-        logging.info('creating link %s' % link)
-        os.symlink(libudev1, link)
-
-  logging.info('Extracting %s' % pnacl_zip)
-  with zipfile.ZipFile(pnacl_zip) as zip_archive:
-    zip_archive.extractall(destination)
-
-  chrome_root = os.path.join(destination, ChromeArchiveRoot())
-  pnacl_root = os.path.join(destination, 'pnacl', 'pnacl')
-  logging.info('Renaming pnacl directory %s -> %s' % (pnacl_root, chrome_root))
-  os.rename(pnacl_root, os.path.join(chrome_root, 'pnacl'))
-
-  logging.info('Writing stamp...')
-  with open(stamp_filename, 'w') as fh:
-    fh.write(stamp_content)
-  logging.info('Done.')
-
-
-def KillSubprocessAndChildren(proc):
+def kill_subprocess_and_children(proc):
   """Kill a subprocess and all children.
 
   While this is trivial on Posix platforms, on Windows this requires some
@@ -221,7 +86,7 @@ def KillSubprocessAndChildren(proc):
     os.kill(-proc.pid, 9)
 
 
-def CommunicateWithTimeout(proc, timeout):
+def communicate_with_timeout(proc, timeout):
   """Wait for a subprocess.Popen to end, capturing output, with a timeout.
 
   Args:
@@ -235,10 +100,10 @@ def CommunicateWithTimeout(proc, timeout):
 
   result = []
 
-  def Target():
+  def target():
     result.append(list(proc.communicate()))
 
-  thread = threading.Thread(target=Target)
+  thread = threading.Thread(target=target)
   thread.start()
   try:
     thread.join(timeout)
@@ -247,7 +112,7 @@ def CommunicateWithTimeout(proc, timeout):
                     timeout)
       # This will kill the process which should force communicate to return with
       # any partial output.
-      KillSubprocessAndChildren(proc)
+      kill_subprocess_and_children(proc)
       # Thus result should ALWAYS contain something after this join.
       thread.join()
       logging.error('Killed test due to timeout of %.1f seconds!' % timeout)
@@ -263,7 +128,7 @@ def CommunicateWithTimeout(proc, timeout):
   finally:
     # In case something else goes wrong, be sure to bring down the child.
     if thread.is_alive():
-      KillSubprocessAndChildren(proc)
+      kill_subprocess_and_children(proc)
   assert len(result) == 1
   return tuple(result[0]) + (returncode,)
 
@@ -282,17 +147,17 @@ class ChromeTestServer(httpd.QuittableHTTPServer):
     self.filter_string = '*'
     httpd.QuittableHTTPServer.__init__(self, server_address, handler)
 
-  def AddRoot(self, path):
+  def add_root(self, path):
     self.roots.append(os.path.abspath(path))
 
-  def SetFilterString(self, filter_string):
+  def set_filter_string(self, filter_string):
     self.filter_string = filter_string
 
 
 class ChromeTestHandler(httpd.QuittableHTTPHandler):
   """An HTTP request handler that gathers test results."""
 
-  def SendEmptyReply(self):
+  def send_empty_reply(self):
     self.send_response(200, 'OK')
     self.send_header('Content-type', 'text/html')
     self.send_header('Content-length', '0')
@@ -337,7 +202,7 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
         if message[-1] == '\n':
           message = message[:-1]
         logging.log(level, message)
-        self.SendEmptyReply()
+        self.send_empty_reply()
         return
       # Allow the tests to request the current test filter string.
       elif ('filter' in params and len(params['filter']) == 1 and
@@ -350,8 +215,8 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
         return
       # Allow the tests to declare their name on start.
       elif ('start' in params and len(params['start']) == 1 and
-          params['start'][0] == '1' and
-          'name' in params and len(params['name']) == 1):
+            params['start'][0] == '1' and 'name' in params and
+            len(params['name']) == 1):
         name = params['name'][0]
         if name in self.server.tests:
           result = 1
@@ -360,7 +225,7 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
           self.server.tests.add(name)
           print '[ RUN      ] %s' % name
         self.server.last_test = name
-        self.SendEmptyReply()
+        self.send_empty_reply()
         return
       # Allow the tests to post (pass/fail) results.
       elif ('result' in params and len(params['result']) == 1 and
@@ -380,13 +245,13 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
           print '[  FAILED  ] %s (%s)' % (name, duration)
         self.server.last_test = None
         self.server.test_results += 1
-        self.SendEmptyReply()
+        self.send_empty_reply()
         return
       # Allow the test set to announce the number of tests it will run.
       elif 'test_count' in params and len(params['test_count']) == 1:
         assert self.server.expected_test_count is None
         self.server.expected_test_count = int(params['test_count'][0])
-        self.SendEmptyReply()
+        self.send_empty_reply()
         return
     # Fall back to a providing normal HTTP access.
     httpd.QuittableHTTPHandler.do_GET(self)
@@ -396,7 +261,7 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
       httpd.QuittableHTTPHandler.log_message(self, fmt, *args)
 
 
-def Hex2Alpha(ch):
+def hex_to_alpha(ch):
   """Convert a hexadecimal digit from 0-9 / a-f to a-p.
 
   Args:
@@ -410,7 +275,7 @@ def Hex2Alpha(ch):
     return chr(ord(ch) + 10)
 
 
-def ChromeAppIdFromPath(path):
+def chrome_app_id_from_path(path):
   """Converts a path to the corresponding chrome app id.
 
   A stable but semi-undocumented property of unpacked chrome extensions is
@@ -425,12 +290,12 @@ def ChromeAppIdFromPath(path):
   """
   hasher = hashlib.sha256(os.path.realpath(path))
   hexhash = hasher.hexdigest()[:32]
-  return ''.join([Hex2Alpha(ch) for ch in hexhash])
+  return ''.join([hex_to_alpha(ch) for ch in hexhash])
 
 
-def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
-              unlimited_storage, enable_nacl, enable_nacl_debug,
-              load_extensions, load_apps, start_path):
+def run_chrome(chrome_path, timeout, filter_string, roots, use_xvfb,
+               unlimited_storage, enable_nacl, enable_nacl_debug,
+               load_extensions, load_apps, start_path):
   """Run Chrome with a timeout and several options.
 
   Args:
@@ -457,14 +322,14 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
 
   # Add in the chrome_test extension and compute its id.
   load_extensions += [TESTING_EXTENSION, TESTING_TCP_APP]
-  testing_id = ChromeAppIdFromPath(TESTING_EXTENSION)
+  testing_id = chrome_app_id_from_path(TESTING_EXTENSION)
 
   s = ChromeTestServer(('', 0), ChromeTestHandler)
   for root in roots:
-    s.AddRoot(root)
-  s.SetFilterString(filter_string)
+    s.add_root(root)
+  s.set_filter_string(filter_string)
 
-  def Target():
+  def target():
     s.serve_forever(poll_interval=0.1)
 
   base_url = 'http://%s:%d' % (s.server_address[0], s.server_address[1])
@@ -479,7 +344,7 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
     work_dir = os.path.abspath(work_dir)
     logging.info('Created work area in %s' % work_dir)
     try:
-      thread = threading.Thread(target=Target)
+      thread = threading.Thread(target=target)
       thread.start()
 
       cmd = []
@@ -510,16 +375,16 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
         cmd += ['--load-and-launch-app=' + ','.join(load_apps)]
       cmd += [start_url]
 
-      def ProcessGroup():
+      def process_group():
         if sys.platform != 'win32':
           # On non-windows platforms, start a new process group so that we can
           # be certain we bring down Chrome on a timeout.
           os.setpgid(0, 0)
 
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, preexec_fn=ProcessGroup)
+                           stderr=subprocess.STDOUT, preexec_fn=process_group)
       logging.info('Started chrome with command line: %s' % (' '.join(cmd)))
-      stdout, _, returncode = CommunicateWithTimeout(p, timeout=timeout)
+      stdout, _, returncode = communicate_with_timeout(p, timeout=timeout)
       if logging.getLogger().isEnabledFor(logging.DEBUG):
         sys.stdout.write('\n[[[ STDOUT ]]]\n')
         sys.stdout.write('-' * 70 + '\n')
@@ -541,8 +406,7 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
 
   if returncode == RETURNCODE_KILL:
     print '[ TIMEOUT   ] Timed out, ran %d tests, %d failed.' % (
-        len(s.tests), len(s.failed_tests)
-    )
+        len(s.tests), len(s.failed_tests))
     sys.exit(1)
   elif s.expected_test_count is None:
     print('[ XXXXXXXX ] Expected test count never emitted.')
@@ -550,8 +414,7 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
   elif s.test_results != s.expected_test_count:
     print('[ XXXXXXXX ] '
           'Expected %d tests, but only %d had results, with %d failures.' % (
-              s.expected_test_count, s.test_results, len(s.failed_tests)
-          ))
+              s.expected_test_count, s.test_results, len(s.failed_tests)))
     sys.exit(1)
   elif s.result != 0:
     print '[ Failures ] Ran %d tests, %d failed.' % (len(s.tests),
@@ -561,7 +424,7 @@ def RunChrome(chrome_path, timeout, filter_string, roots, use_xvfb,
     print '[ Success! ] Ran %d tests.' % len(s.tests)
 
 
-def Main(argv):
+def main(argv):
   """Main method to invoke in test harness programs.
   Args:
     argv: Command line options controlling what to run.
@@ -574,7 +437,7 @@ def Main(argv):
   parser.add_argument('-x', '--xvfb', action='store_true',
                       help='Run Chrome thru xvfb on Linux.')
   parser.add_argument('-a', '--arch', default='x86_64',
-                      help='Chrome architecture: i686 / x86_64.')
+                      choices=['x86_64', 'i686'], help='Chrome architecture.')
   parser.add_argument('-v', '--verbose', default=0, action='count',
                       help='Emit verbose output, use twice for more.')
   parser.add_argument('-t', '--timeout', default=30, type=float,
@@ -635,17 +498,14 @@ def Main(argv):
                     'missing: %s' % os.environ['CHROME_DEVEL_SANDBOX'])
       sys.exit(1)
 
-  DownloadChrome(ChromeUrl(options.arch), ChromeDir(options.arch))
-  RunChrome(
-      chrome_path=ChromeRunPath(options.arch),
-      timeout=options.timeout,
-      filter_string=options.filter,
-      roots=options.chdir,
-      use_xvfb=options.xvfb,
-      unlimited_storage=options.unlimited_storage,
-      enable_nacl=options.enable_nacl,
-      enable_nacl_debug=options.enable_nacl_debug,
-      load_extensions=options.load_extension,
-      load_apps=options.load_and_launch_app,
-      start_path=options.start_path)
+  chrome_dir = download_chrome.download_chrome(options.arch, CHROME_REVISION)
+  run_chrome(chrome_path=chrome_run_path(chrome_dir, options.arch),
+             timeout=options.timeout, filter_string=options.filter,
+             roots=options.chdir, use_xvfb=options.xvfb,
+             unlimited_storage=options.unlimited_storage,
+             enable_nacl=options.enable_nacl,
+             enable_nacl_debug=options.enable_nacl_debug,
+             load_extensions=options.load_extension,
+             load_apps=options.load_and_launch_app,
+             start_path=options.start_path)
   sys.exit(0)

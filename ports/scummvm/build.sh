@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-MIRROR_URL=http://storage.googleapis.com/naclports/mirror
+MIRROR_URL=http://storage.googleapis.com/webports/mirror
 
 # Beneath a Steel Sky (floppy version)
 readonly BASS_FLOPPY_URL=${MIRROR_URL}/scummvm_games/bass/BASS-Floppy-1.3.zip
@@ -20,13 +20,10 @@ SCUMMVM_EXAMPLE_DIR=${NACL_SRC}/ports/scummvm
 ConfigureStep() {
   # NOTE: We can't use the DefaultConfigureStep, because the scummvm
   # configure script is hand-rolled, and won't accept additional arguments.
-  # export the nacl tools
-  # without this setting *make* will not show the full command lines
-  export VERBOSE_BUILD=1
   SetupCrossEnvironment
 
   local conf_host=${NACL_CROSS_PREFIX}
-  if [ "${NACL_ARCH}" = "pnacl" ]; then
+  if [ "${NACL_ARCH}" = "pnacl" -o "${NACL_ARCH}" = "le32" ]; then
     conf_host="pnacl"
   elif [ "${NACL_ARCH}" = "arm" ]; then
     conf_host="nacl-arm"
@@ -92,7 +89,7 @@ InstallStep() {
 
   cp ${START_DIR}/packaged_app/* ${ASSEMBLY_DIR}
   cp ${SRC_DIR}/*.tar ${ASSEMBLY_DIR}
-  if [ "${NACL_DEBUG}" = "1" ]; then
+  if [ "${NACL_DEBUG}" = "1" -o ${NACL_ARCH} = "le32" ]; then
     cp ${BUILD_DIR}/scummvm \
         ${ASSEMBLY_DIR}/scummvm_${NACL_ARCH}${NACL_EXEEXT}
   else
@@ -105,7 +102,7 @@ InstallStep() {
       -s ${ASSEMBLY_DIR} \
       -o ${ASSEMBLY_DIR}/scummvm.nmf
 
-  if [ "${NACL_ARCH}" = "pnacl" ]; then
+  if [ "${NACL_ARCH}" = "pnacl" -o "${NACL_ARCH}" = "le32" ]; then
     sed -i.bak 's/x-nacl/x-pnacl/' ${ASSEMBLY_DIR}/index.html
   fi
 

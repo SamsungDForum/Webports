@@ -14,8 +14,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(os.path.dirname(SCRIPT_DIR), 'lib'))
 
-import naclports
-import naclports.source_package
+import webports
+import webports.source_package
 
 
 def main(args):
@@ -24,17 +24,14 @@ def main(args):
                       help='Output extra information.')
   options = parser.parse_args(args)
   if options.verbose:
-    naclports.SetVerbose(True)
+    webports.set_verbose(True)
   count = 0
 
-  for package in naclports.source_package.SourcePackageIterator():
-    package.Download()
-    if not package.Verify():
-      return 1
-
+  for package in webports.source_package.source_package_iterator():
+    package.download()
     count += 1
 
-  naclports.Log("Verfied checksums for %d packages" % count)
+  webports.log("Verfied checksums for %d packages" % count)
   return 0
 
 

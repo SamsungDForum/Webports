@@ -15,19 +15,21 @@ ConfigureStep() {
   export CC="gcc -m32"
   export CXX="g++ -m32"
   export LD="gcc -m32"
-  LogExecute ${SRC_DIR}/configure --prefix=${NACL_HOST_PYROOT}
+  LogExecute ${SRC_DIR}/configure --prefix=${NACL_HOST_PYROOT} \
+    --without-x --without-tk
 }
 
 BuildStep() {
   DefaultBuildStep
-  ssl_lib=$(find build -name "_ssl*")
+  ssl_lib=$(find build -name "_ssl.*")
   if [ -z "${ssl_lib}" ]; then
     echo "Failed to build _ssl python module."
     echo "Check for 32-bit install of libssl and libcryto (see README.rst)"
     exit 1
   fi
+  echo "Built ssl lib: ${ssl_lib}"
 }
 
 InstallStep() {
-  make install
+  LogExecute make install
 }

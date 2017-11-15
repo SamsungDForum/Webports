@@ -3,7 +3,7 @@
 # found in the LICENSE file.
 
 BUILD_DIR=${SRC_DIR}
-
+NACLPORTS_CPPFLAGS+=" ${NACL_EXCEPTIONS_FLAG}"
 EnableGlibcCompat
 
 if [ "${TOOLCHAIN}" = "pnacl" -o "${TOOLCHAIN}" = "clang-newlib" ]; then
@@ -41,11 +41,6 @@ if [ "${NACL_LIBC}" != "glibc" ] ; then
   BUILD_ARGS+=" --without-test"
   BUILD_ARGS+=" --without-timer"
 
-fi
-
-if [ "${NACL_LIBC}" = "bionic" ] ; then
-  # No statvfs on bionic
-  BUILD_ARGS+=" --without-filesystem"
 fi
 
 if [ "${NACL_ARCH}" = "arm" -o "${NACL_ARCH}" = "pnacl" ]; then

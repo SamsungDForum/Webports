@@ -4,6 +4,8 @@
  * found in the LICENSE file.
  */
 
+/* globals TEST_F, ASSERT_EQ, ASSERT_GT, chrometest, DevEnvTest */
+
 'use strict';
 
 // Install several packages.
@@ -12,8 +14,6 @@ TEST_F(DevEnvTest, 'testPackageInstall', function() {
   var self = this;
   return Promise.resolve().then(function() {
     return self.installPackage('coreutils');
-  }).then(function() {
-    return self.installPackage('zlib');
   }).then(function() {
     return self.installPackage('curl');
   }).then(function() {
@@ -89,8 +89,7 @@ TEST_F(DevEnvFileTest, 'testGit', function() {
   }).then(function() {
     return self.checkCommandReLines(
         'cd foo && git init', 0,
-        ['warning: templates not found ' +
-         '/naclports-dummydir/share/git-core/templates',
+        [/^warning: templates not found \/.*\/share\/git-core\/templates/,
          'Initialized empty Git repository in /home/user/foo/.git/']);
   }).then(function() {
     return self.checkCommand('mkdir foo/bar', 0, '');

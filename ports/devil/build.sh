@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+NACLPORTS_CPPFLAGS+=" ${NACL_EXCEPTIONS_FLAG}"
 if [ "${NACL_ARCH}" = "pnacl" ]; then
   NACLPORTS_CFLAGS+=" -std=gnu89"
 fi
@@ -11,20 +12,13 @@ TestStep() {
 
   if [ ${NACL_ARCH} == "pnacl" ]; then
     # Run once for each architecture.
-    local pexe=test/testil
-    local script=${pexe}.sh
 
-    TranslateAndWriteLauncherScript ${pexe} x86-32 ${pexe}.x86-32.nexe ${script}
+    WriteLauncherScript test/testil testil.x86-32.nexe
     (cd test && make check)
 
-    TranslateAndWriteLauncherScript ${pexe} x86-64 ${pexe}.x86-64.nexe ${script}
+    WriteLauncherScript test/testil testil.x86-64.nexe
     (cd test && make check)
   else
-    local nexe=test/testil
-    local script=${nexe}.sh
-
-    WriteLauncherScript ${script} ${nexe}
-
     (cd test && make check)
   fi
 }

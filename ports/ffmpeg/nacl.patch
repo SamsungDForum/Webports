@@ -1,8 +1,36 @@
+diff --git a/Makefile b/Makefile
+index 8aa72fd..8670c16 100644
+--- a/Makefile
++++ b/Makefile
+@@ -125,7 +125,9 @@ ffprobe.o cmdutils.o libavcodec/utils.o libavformat/utils.o libavdevice/avdevice
+ 
+ $(PROGS): %$(PROGSSUF)$(EXESUF): %$(PROGSSUF)_g$(EXESUF)
+ 	$(CP) $< $@
+-	$(STRIP) $@
++	-if test "$(NACL_ARCH)" != "le32"; then \
++		$(STRIP) $@; \
++	fi
+ 
+ %$(PROGSSUF)_g$(EXESUF): %.o $(FF_DEP_LIBS)
+ 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $(OBJS-$*) $(FF_EXTRALIBS)
 diff --git a/configure b/configure
-index d60ffd8..7e179ff 100755
+index d60ffd8..8bd8e21 100755
 --- a/configure
 +++ b/configure
-@@ -5467,7 +5467,13 @@ if ! disabled network; then
+@@ -3184,7 +3184,11 @@ ln_s_default="ln -s -f"
+ nm_default="nm -g"
+ objformat="elf"
+ pkg_config_default=pkg-config
+-ranlib_default="ranlib"
++if [ $NACL_ARCH != le32 ] && ranlib 2>&1 | grep -q "\-D "; then
++    ranlib_default="ranlib -D"
++else
++    ranlib_default="ranlib"
++fi
+ strip_default="strip"
+ version_script='--version-script'
+ yasmexe_default="yasm"
+@@ -5467,7 +5471,13 @@ if ! disabled network; then
  fi
  
  check_builtin atomic_cas_ptr atomic.h "void **ptr; void *oldval, *newval; atomic_cas_ptr(ptr, oldval, newval)"
@@ -17,7 +45,7 @@ index d60ffd8..7e179ff 100755
  check_builtin machine_rw_barrier mbarrier.h "__machine_rw_barrier()"
  check_builtin MemoryBarrier windows.h "MemoryBarrier()"
  check_builtin sarestart signal.h "SA_RESTART"
-@@ -5748,7 +5754,7 @@ enabled libtwolame        && require libtwolame twolame.h twolame_init -ltwolame
+@@ -5748,7 +5758,7 @@ enabled libtwolame        && require libtwolame twolame.h twolame_init -ltwolame
  enabled libv4l2           && require_pkg_config libv4l2 libv4l2.h v4l2_ioctl
  enabled libvidstab        && require_pkg_config "vidstab >= 0.98" vid.stab/libvidstab.h vsMotionDetectInit
  enabled libvo_amrwbenc    && require libvo_amrwbenc vo-amrwbenc/enc_if.h E_IF_init -lvo-amrwbenc
@@ -119,7 +147,7 @@ index 5d827d3..ac39371 100644
 --- a/libavformat/Makefile
 +++ b/libavformat/Makefile
 @@ -4,6 +4,10 @@ NAME = avformat
-
+ 
  HEADERS = avformat.h                                                    \
            avio.h                                                        \
 +          rtpdec.h                                                      \
@@ -127,7 +155,7 @@ index 5d827d3..ac39371 100644
 +          srtp.h                                                        \
 +          url.h                                                         \
            version.h                                                     \
-
+ 
  OBJS = allformats.o         \
 diff --git a/libavformat/avformat.h b/libavformat/avformat.h
 index f9f4d72..36032a1 100644
@@ -200,7 +228,7 @@ index 9038057..a9d4481 100644
 diff --git a/libavformat/mov.c b/libavformat/mov.c
 old mode 100644
 new mode 100755
-index 431aa00..82fd9dd
+index 1e21418..55f9845
 --- a/libavformat/mov.c
 +++ b/libavformat/mov.c
 @@ -70,6 +70,7 @@ typedef struct MOVParseTableEntry {
@@ -693,9 +721,9 @@ index 431aa00..82fd9dd
          av_aes_ctr_free(sc->cenc.aes_ctr);
      }
  
-@@ -5647,6 +6012,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
+@@ -5642,6 +6007,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
+     if (error_code == AVERROR_EOF || avio_feof(pb))
          return 0;
-     #endif
  
 +#if defined(__native_client__)
 +    if (!pb->seekable)
@@ -705,7 +733,7 @@ index 431aa00..82fd9dd
      return 1;
  }
  
-@@ -5848,6 +6218,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -5838,6 +6208,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
          if (ret) {
              return ret;
          }
@@ -742,3 +770,6 @@ index 5348e0d..0a8bb62 100644
      flush_packet_queue(s);
      av_free(s);
  }
+-- 
+2.15.0
+

@@ -98,7 +98,8 @@ static void AddNmfToRequestForShared(
     // loader always uses "main.nexe" as the main binary.
     if (strcmp(prog_base, base) == 0)
       base = "main.nexe";
-    if (strcmp(base, "runnable-ld.so") == 0) {
+    if (strcmp(base, "runnable-ld.so") == 0 ||
+        strcmp(base, "elf_loader_arm.nexe") == 0) {
       AddFileToNmf("program", arch, abspath, nmf_var);
     } else {
       AddFileToNmf(base, arch, abspath, files_var);
@@ -239,13 +240,10 @@ static bool UseBuiltInFallback(std::string* prog, struct PP_Var req_var) {
   return false;
 }
 
-// Check if a file is a pnacl type file.
-// If the file can't be read, return false.
-static bool IsPNaClType(const std::string& filename) {
-  // Open script.
+static bool CheckFileMagic(const std::string& filename,
+    const std::string& magic) {
   int fh = open(filename.c_str(), O_RDONLY);
   if (fh < 0) {
-    // Default to nacl type if the file can't be read.
     return false;
   }
   // Read first 4 bytes.
@@ -253,7 +251,17 @@ static bool IsPNaClType(const std::string& filename) {
   ssize_t len = read(fh, buffer, sizeof buffer);
   close(fh);
   // Decide based on the header.
-  return len == 4 && memcmp(buffer, "PEXE", sizeof buffer) == 0;
+  return len == 4 && memcmp(buffer, magic.c_str(), sizeof buffer) == 0;
+}
+
+// Check if a file contains finalised PNaCl bitcode
+static bool IsPNaClType(const std::string& filename) {
+  return CheckFileMagic(filename, "PEXE");
+}
+
+// Check if a file contains LLVM bitcode
+static bool IsBitcode(const std::string& filename) {
+  return CheckFileMagic(filename, "BC\xc0\xde");
 }
 
 // Adds a NMF to the request if |prog| is stored in HTML5 filesystem.
@@ -275,10 +283,21 @@ static bool AddNmfToRequest(std::string prog, struct PP_Var req_var) {
     return true;
   }
 
+  bool debug = getenv("LD_DEBUG") != NULL;
+
   // Check for pnacl.
   if (IsPNaClType(prog)) {
+    if (debug) {
+      fprintf(stderr, "%s: loading PNaCl bitcode: %s\n",
+          LOADER_NAME, prog.c_str());
+    }
     AddNmfToRequestForPNaCl(prog, req_var);
     return true;
+  }
+
+  if (IsBitcode(prog)) {
+    fprintf(stderr, "%s: cannot execute unfinalized bitcode\n", prog.c_str());
+    return false;
   }
 
   std::string arch;
@@ -335,7 +354,8 @@ static int CloneFileDescriptors(struct PP_Var envs_var) {
       char entry[100];
       snprintf(entry, sizeof entry,
           "NACL_SPAWN_FD_SETUP_%d=pipe:%d:%d:%d", count++, fd,
-          static_cast<int>(st.st_ino), st.st_rdev == O_WRONLY);
+          static_cast<int>(st.st_ino),
+          (st.st_rdev & O_WRONLY) == O_WRONLY);
       nspawn_array_appendstring(envs_var, entry);
     } else if (S_ISLNK(st.st_mode)) {
       // Unsupported.
@@ -372,9 +392,9 @@ static void unstash_file_descriptors(void) {
   }
 }
 
-NACL_SPAWN_TLS jmp_buf nacl_spawn_vfork_env;
-static NACL_SPAWN_TLS pid_t vfork_pid = -1;
-static NACL_SPAWN_TLS int vforking = 0;
+__thread jmp_buf nacl_spawn_vfork_env;
+static __thread pid_t vfork_pid = -1;
+static __thread int vforking = 0;
 
 // Shared spawnve implementation. Declared static so that shared library
 // overrides doesn't break calls meant to be internal to this implementation.
@@ -382,6 +402,7 @@ static int spawnve_impl(int mode,
                         const char* path,
                         char* const argv[],
                         char* const envp[]) {
+  NSPAWN_LOG("spawnve_impl: mode=%x path=%s", mode, path);
   if (NULL == path || NULL == argv[0]) {
     errno = EINVAL;
     return -1;
@@ -404,10 +425,7 @@ static int spawnve_impl(int mode,
       vfork_pid = spawnve_impl(P_NOWAIT, path, argv, envp);
       longjmp(nacl_spawn_vfork_env, 1);
     }
-    // TODO(bradnelson): Add this by allowing javascript to replace the
-    // existing module with a new one.
-    errno = ENOSYS;
-    return -1;
+    // The normal case
   } else {
     errno = EINVAL;
     return -1;
@@ -418,6 +436,9 @@ static int spawnve_impl(int mode,
 
   struct PP_Var req_var = nspawn_dict_create();
   nspawn_dict_setstring(req_var, "command", "nacl_spawn");
+  if (mode == P_OVERLAY) {
+    nspawn_dict_setstring(req_var, "mode", "overlay");
+  }
 
   struct PP_Var args_var = nspawn_array_create();
   for (int i = 0; argv[i]; i++)
@@ -440,7 +461,16 @@ static int spawnve_impl(int mode,
     return -1;
   }
 
-  return nspawn_dict_getint_release(nspawn_send_request(req_var), "pid");
+  int pid = nspawn_dict_getint_release(nspawn_send_request(req_var), "pid");
+  if (mode == P_OVERLAY) {
+    // In P_OVERLAY mode, then the request cause us to be killed (removed
+    // from the DOM), and replaced by that child.  In this case the reply
+    // will never arrive.
+    NSPAWN_LOG("spawnve_impl: should never get here");
+    abort();
+  }
+  NSPAWN_LOG("new process pid=%d\n", pid);
+  return pid;
 }
 
 // Spawn a new NaCl process. This is an alias for
@@ -657,9 +687,8 @@ void jseval(const char* cmd, char** data, size_t* len) {
   nspawn_var_release(result_dict_var);
 }
 
-// Create a javascript pipe. pipefd[0] will be the read end of the pipe
-// and pipefd[1] the write end of the pipe.
-int nacl_spawn_pipe(int pipefd[2]) {
+// Same as above with flags.
+int nacl_spawn_pipe2(int pipefd[2], int flags) {
   if (pipefd == NULL) {
     errno = EFAULT;
     return -1;
@@ -676,8 +705,13 @@ int nacl_spawn_pipe(int pipefd[2]) {
   int write_fd;
   char path[100];
   sprintf(path, "/apipe/%d", id);
-  read_fd = open(path, O_RDONLY);
-  write_fd = open(path, O_WRONLY);
+  // The only flag supported is O_NONBLOCK.
+  // TODO(bradnelson): Drop this once nacl_io does the right thing:
+  // https://bugs.chromium.org/p/webports/issues/detail?id=247
+  // https://bugs.chromium.org/p/webports/issues/detail?id=248
+  assert(flags == 0 || flags == O_NONBLOCK);
+  read_fd = open(path, O_RDONLY | flags);
+  write_fd = open(path, O_WRONLY | flags);
   if (read_fd < 0 || write_fd < 0) {
     if (read_fd >= 0) {
       close(read_fd);
@@ -691,6 +725,12 @@ int nacl_spawn_pipe(int pipefd[2]) {
   pipefd[1] = write_fd;
 
   return 0;
+}
+
+// Create a javascript pipe. pipefd[0] will be the read end of the pipe
+// and pipefd[1] the write end of the pipe.
+int nacl_spawn_pipe(int pipefd[2]) {
+  return nacl_spawn_pipe2(pipefd, 0);
 }
 
 void nacl_spawn_vfork_before(void) {
@@ -755,40 +795,48 @@ void nacl_spawn_vfork_exit(int status) {
   va_end(vl);
 
 int execve(const char *filename, char *const argv[], char *const envp[]) {
+  NSPAWN_LOG("execve: %s", filename);
   return spawnve_impl(P_OVERLAY, filename, argv, envp);
 }
 
 int execv(const char *path, char *const argv[]) {
+  NSPAWN_LOG("execv: %s", path);
   return spawnve_impl(P_OVERLAY, path, argv, environ);
 }
 
 int execvp(const char *file, char *const argv[]) {
+  NSPAWN_LOG("execvp: %s", file);
   // TODO(bradnelson): Limit path resolution to 'p' variants.
   return spawnve_impl(P_OVERLAY, file, argv, environ);
 }
 
 int execvpe(const char *file, char *const argv[], char *const envp[]) {
+  NSPAWN_LOG("execvpe: %s", file);
   // TODO(bradnelson): Limit path resolution to 'p' variants.
   return spawnve_impl(P_OVERLAY, file, argv, envp);
 }
 
 int execl(const char *path, const char *arg, ...) {
+  NSPAWN_LOG("execl: %s", path);
   VARG_TO_ARGV;
   return spawnve_impl(P_OVERLAY, path, argv, environ);
 }
 
 int execlp(const char *file, const char *arg, ...) {
+  NSPAWN_LOG("execlp: %s", file);
   VARG_TO_ARGV;
   // TODO(bradnelson): Limit path resolution to 'p' variants.
   return spawnve_impl(P_OVERLAY, file, argv, environ);
 }
 
 int execle(const char *path, const char *arg, ...) {  /* char* const envp[] */
+  NSPAWN_LOG("execle: %s", path);
   VARG_TO_ARGV_ENVP;
   return spawnve_impl(P_OVERLAY, path, argv, envp);
 }
 
 int execlpe(const char *path, const char *arg, ...) {  /* char* const envp[] */
+  NSPAWN_LOG("execlpe: %s", path);
   VARG_TO_ARGV_ENVP;
   // TODO(bradnelson): Limit path resolution to 'p' variants.
   return spawnve_impl(P_OVERLAY, path, argv, envp);

@@ -4,6 +4,8 @@
  * found in the LICENSE file.
  */
 
+/* globals ASSERT_EQ, EXPECT_EQ, EXPECT_TRUE, chrometest */
+
 'use strict';
 
 function DevEnvTest() {
@@ -15,7 +17,7 @@ function DevEnvTest() {
   // Buffer incoming TCP messages.
   this.tcpBuffer = {};
   this.tcpDisconnected = {};
-};
+}
 
 DevEnvTest.prototype = new chrometest.Test();
 DevEnvTest.prototype.constructor = DevEnvTest;
@@ -38,18 +40,10 @@ DevEnvTest.prototype.setUp = function() {
   }).then(function() {
     return self.mkdir('/home/user');
   }).then(function() {
-    return self.mkdir('/usr');
-  }).then(function() {
-    return self.mkdir('/usr/etc');
-  }).then(function() {
-    return self.mkdir('/usr/etc/pkg');
-  }).then(function() {
-    return self.mkdir('/usr/etc/pkg/repos');
+    return self.checkCommand('bash -c exit', 0);
   }).then(function() {
     if (self.params['latest'] === '1')
-      return self.setRepo(window.location.origin + '/publish');
-  }).then(function() {
-    return self.mkdir('/home/user');
+      return self.setLocalRepo(window.location.origin);
   });
 };
 
@@ -93,14 +87,14 @@ DevEnvTest.prototype.gatherStdoutUntil = function(name) {
   });
 };
 
-DevEnvTest.prototype.spawnCommand = function(cmd, cmdPrefix) {
+DevEnvTest.prototype.spawnCommand = function(cmd, env) {
   var self = this;
 
-  if (cmdPrefix === undefined) {
-    cmdPrefix = '. /mnt/http/setup-environment && ';
+  if (env === undefined) {
+    env = [];
   }
-
-  var env = ['HOME=/home/user', 'NACL_DATA_MOUNT_FLAGS=manifest=/manifest.txt'];
+  env.push('HOME=/home/user');
+  env.push('NACL_DATA_MOUNT_FLAGS=manifest=/manifest.txt');
   if (this.params['latest'] === '1') {
     env.push('NACL_DEVENV_LOCAL=1');
   }
@@ -109,7 +103,7 @@ DevEnvTest.prototype.spawnCommand = function(cmd, cmdPrefix) {
     self.devEnv.postMessage({
       'name': 'nacl_spawn',
       'nmf': 'bash.nmf',
-      'argv': ['bash', '-c', cmdPrefix + cmd],
+      'argv': ['bash', '--login', '-c', cmd],
       'cwd': '/home/user',
       'envs': env,
     });
@@ -136,12 +130,12 @@ DevEnvTest.prototype.waitCommand = function(pid) {
   });
 };
 
-DevEnvTest.prototype.runCommand = function(cmd, cmdPrefix) {
+DevEnvTest.prototype.runCommand = function(cmd, env) {
   var self = this;
   var earlyOutput;
   chrometest.info('runCommand: ' + cmd);
   return Promise.resolve().then(function() {
-    return self.spawnCommand(cmd, cmdPrefix);
+    return self.spawnCommand(cmd, env);
   }).then(function(msg) {
     earlyOutput = msg.output;
     return self.waitCommand(msg.pid);
@@ -152,13 +146,13 @@ DevEnvTest.prototype.runCommand = function(cmd, cmdPrefix) {
 };
 
 DevEnvTest.prototype.checkCommand = function(
-    cmd, expectedStatus, expectedOutput) {
+    cmd, expectedStatus, expectedOutput, env) {
   if (expectedStatus === undefined) {
     expectedStatus = 0;
   }
   var self = this;
   return Promise.resolve().then(function() {
-    return self.runCommand(cmd);
+    return self.runCommand(cmd, env);
   }).then(function(result) {
     ASSERT_EQ(expectedStatus, result.status, result.output);
     if (expectedOutput !== undefined) {
@@ -180,11 +174,10 @@ DevEnvTest.prototype.installPackage = function(name) {
 };
 
 DevEnvTest.prototype.installDefaultPackages = function(name) {
-  var cmd = 'bash /mnt/http/install-base-packages.sh';
-  chrometest.info(cmd);
-  return this.checkCommand(cmd, 0);
+  var env = ['INSTALL_BASE_PACKAGES=1'];
+  chrometest.info('install base packages');
+  return this.checkCommand('exit', 0, undefined, env);
 };
-
 
 DevEnvTest.prototype.checkCommandReLines = function(
     cmd, expectedStatus, expectedOutput) {
@@ -235,16 +228,16 @@ DevEnvTest.prototype.writeFile = function(fileName, data) {
   });
 };
 
-DevEnvTest.prototype.setRepo = function(data) {
+DevEnvTest.prototype.setLocalRepo = function(data) {
   var self = this;
   return Promise.resolve().then(function() {
     self.devEnv.postMessage({
-      'name': 'set_repo',
+      'name': 'set_local_repo',
       'data': data
     });
     return self.devEnv.wait();
   }).then(function(msg) {
-    ASSERT_EQ('set_repo_reply', msg.name);
+    ASSERT_EQ('set_local_repo_reply', msg.name);
   });
 };
 

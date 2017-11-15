@@ -660,6 +660,15 @@ diff --git a/src/emacs.c b/src/emacs.c
  #if GC_MARK_STACK
    Lisp_Object dummy;
  #endif
+@@ -1877,7 +1898,7 @@ shut_down_emacs (int sig, Lisp_Object stuff)
+   Vinhibit_redisplay = Qt;
+ 
+   /* If we are controlling the terminal, reset terminal modes.  */
+-#ifndef DOS_NT
++#if !defined(DOS_NT) && !defined(NACL_EMACS)
+   {
+     pid_t pgrp = EMACS_GETPGRP (0);
+     pid_t tpgrp = tcgetpgrp (0);
 @@ -2113,7 +2134,7 @@ decode_env_path (const char *evarname, const char *defalt)
      path = getenv (evarname);
    else
@@ -858,21 +867,46 @@ diff --git a/src/process.c b/src/process.c
  
  static void
  create_process (Lisp_Object process, char **new_argv, Lisp_Object current_dir)
-@@ -1663,9 +1684,13 @@ create_process (Lisp_Object process, char **new_argv, Lisp_Object current_dir)
-       tem = pipe (wait_child_setup);
+@@ -1640,7 +1661,11 @@ create_process (Lisp_Object process, char **new_argv, Lisp_Object current_dir)
+ #endif /* HAVE_PTYS */
+     {
+       int tem;
++#if defined(NACL_EMACS)
++      tem = nacl_spawn_pipe2 (sv, O_NONBLOCK);
++#else
+       tem = pipe (sv);
++#endif
        if (tem < 0)
  	report_file_error ("Creating pipe", Qnil);
-+      message("About to get file descriptor flags");
-       tem = fcntl (wait_child_setup[1], F_GETFD, 0);
-       if (tem >= 0)
-+      {
-+        message("About to set file descriptor flags");
- 	tem = fcntl (wait_child_setup[1], F_SETFD, tem | FD_CLOEXEC);
-+      }
-       if (tem < 0)
- 	{
- 	  emacs_close (wait_child_setup[0]);
-@@ -4633,13 +4658,23 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
+       inchannel = sv[0];
+@@ -4473,14 +4498,26 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
+ 	  Ctemp = write_mask;
+ 
+ 	  timeout = make_emacs_time (0, 0);
++#if defined (NACL_EMACS)
++	  // NACL doesn't support pselect yet, so use select instead.
++	  // (glibc stubs out pselect in terms of select).
++	  // Select takes a different kind of time, and one fewer argument.
++	  struct timeval timevalue = {0,0};
++	  if ((select (max (max_process_desc, max_input_desc) + 1,
++#else
+ 	  if ((pselect (max (max_process_desc, max_input_desc) + 1,
++#endif
+ 			&Atemp,
+ #ifdef NON_BLOCKING_CONNECT
+ 			(num_pending_connects > 0 ? &Ctemp : NULL),
+ #else
+ 			NULL,
+ #endif
++#if defined (NACL_EMACS)
++			NULL, &timevalue)
++#else
+ 			NULL, &timeout, NULL)
++#endif
+ 	       <= 0))
+ 	    {
+ 	      /* It's okay for us to do this and then continue with
+@@ -4633,13 +4670,23 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
            nfds = xg_select
  #elif defined (HAVE_NS)
  	  nfds = ns_select
@@ -896,6 +930,23 @@ diff --git a/src/process.c b/src/process.c
  
  #ifdef HAVE_GNUTLS
            /* GnuTLS buffers data internally.  In lowat mode it leaves
+@@ -6935,7 +6982,15 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
+ 	{
+ 	  if (read_kbd || !NILP (wait_for_cell))
+ 	    FD_SET (0, &waitchannels);
+-	  nfds = pselect (1, &waitchannels, NULL, NULL, &timeout, NULL);
++#if defined (NACL_EMACS)
++	  // NACL doesn't support pselect yet, so use select instead.
++	  // (glibc stubs out pselect in terms of select).
++	  // Select takes a different kind of time, and one fewer argument.
++	  struct timeval timevalue = {0,0};
++	  nfds = select(1, &waitchannels, NULL, NULL, &timevalue);
++#else
++	  nfds = pselect(1, &waitchannels, NULL, NULL, &timeout, NULL);
++#endif
+ 	}
+ 
+       xerrno = errno;
 diff --git a/src/sysdep.c b/src/sysdep.c
 --- a/src/sysdep.c
 +++ b/src/sysdep.c
@@ -911,7 +962,46 @@ diff --git a/src/sysdep.c b/src/sysdep.c
  #ifdef BSD_SYSTEM
  #include <sys/param.h>
  #include <sys/sysctl.h>
-@@ -2438,7 +2443,7 @@ cfmakeraw (struct termios *termios_p)
+@@ -353,6 +358,7 @@ child_setup_tty (int out)
+   emacs_get_tty (out, &s);
+   s.main.c_oflag |= OPOST;	/* Enable output postprocessing */
+   s.main.c_oflag &= ~ONLCR;	/* Disable map of NL to CR-NL on output */
++
+ #ifdef NLDLY
+   /* http://lists.gnu.org/archive/html/emacs-devel/2008-05/msg00406.html
+      Some versions of GNU Hurd do not have FFDLY?  */
+@@ -906,6 +912,15 @@ init_sys_modes (struct tty_display_info *tty_out)
+     tty.main.c_iflag &= ~IXON;	/* Disable start/stop output control */
+   tty.main.c_oflag &= ~ONLCR;	/* Disable map of NL to CR-NL
+                                    on output */
++
++#ifdef NACL_EMACS
++  // The NaCl platform is not honoring the ONLCR bit being disbled.
++  // They are planning to fix it, but until then, we can send the term
++  // code to fix disable AutoCRLF.
++  puts("\x1b[20l");
++#endif // NACL_EMACS
++  
++  
+   tty.main.c_oflag &= ~TAB3;	/* Disable tab expansion */
+ #ifdef CS8
+   if (tty_out->meta_key)
+@@ -1228,6 +1243,14 @@ reset_all_sys_modes (void)
+   struct tty_display_info *tty;
+   for (tty = tty_list; tty; tty = tty->next)
+     reset_sys_modes (tty);
++
++#ifdef NACL_EMACS
++  // The NaCl platform is not honoring the ONLCR bit being disbled.
++  // They are planning to fix it, but until then, we can send the term
++  // code to reset AutoCRLF to it's previous state.
++  puts("\x1b[20h");
++#endif // NACL_EMACS
++  
+ }
+ 
+ /* Prepare the terminal for closing it; move the cursor to the
+@@ -2438,7 +2461,7 @@ cfmakeraw (struct termios *termios_p)
  }
  #endif /* !defined (HAVE_CFMAKERAW */
  

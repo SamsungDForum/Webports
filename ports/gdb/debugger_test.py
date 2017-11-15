@@ -16,14 +16,13 @@ GDB_OUT_DIR = os.path.join(SRC_DIR, 'out/publish/gdb', LIBC)
 
 import chrome_test
 
-
 gdb_app = os.path.join(GDB_OUT_DIR, 'gdb_app')
 debug_extension = os.path.join(GDB_OUT_DIR, 'debug_extension')
 test_dir = os.path.join(SCRIPT_DIR, 'tests')
 test_out_dir = os.path.join(GDB_OUT_DIR, 'tests')
 
 if __name__ == '__main__':
-  chrome_test.Main([
+  chrome_test.main([
       '-C', test_dir,
       '-C', test_out_dir,
       '-t', '60',

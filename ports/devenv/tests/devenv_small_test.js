@@ -4,6 +4,8 @@
  * found in the LICENSE file.
  */
 
+/* globals TEST_F, chrometest, DevEnvTest */
+
 'use strict';
 
 // Run the command "bash -c 'exit 42'" and check the exit code.
@@ -48,6 +50,23 @@ TEST_F(DevEnvTest, 'testSheeBangSh', function() {
   });
 });
 
+// Confirm that we can run a command, sleep, and kill it.
+TEST_F(DevEnvTest, 'testSleepKill', function() {
+  var self = this;
+  var pid;
+  return Promise.resolve().then(function() {
+    return self.spawnCommand('bash -c "while [[ 1 == 1 ]]; do echo -n; done"');
+  }).then(function(msg) {
+    pid = msg.pid;
+    return chrometest.sleep(300);
+  }).then(function(msg) {
+    self.sigint();
+    return self.waitCommand(pid);
+  }).then(function(msg) {
+    ASSERT_EQ(128 + 9, msg.status, 'Expect kill status');
+  });
+});
+
 // Run a NaCl executable to make sure syscalls are working.
 TEST_F(DevEnvTest, 'testCTests', function() {
   var self = this;
@@ -58,8 +77,9 @@ TEST_F(DevEnvTest, 'testCTests', function() {
   }).then(function() {
     return self.checkCommand('unzip devenv_small_test.zip', 0);
   }).then(function() {
+    var NACL_BOOT_ARCH = self.params["NACL_BOOT_ARCH"];
     return self.checkCommand(
         'LD_LIBRARY_PATH=${PWD}/${PACKAGE_LIB_DIR}:$LD_LIBRARY_PATH ' +
-        './devenv_small_test_${NACL_BOOT_ARCH}', 0);
+        './devenv_small_test_' + NACL_BOOT_ARCH, 0);
   });
 });
