@@ -94,3 +94,22 @@ diff --git a/gobject/gtype.h b/gobject/gtype.h
  #define _G_DEFINE_BOXED_TYPE_BEGIN(TypeName, type_name, copy_func, free_func) \
  GType \
  type_name##_get_type (void) \
+diff --git a/glib/gutils.c b/glib/gutils.c
+index e229d0d..bf55352 100644
+--- a/glib/gutils.c
++++ b/glib/gutils.c
+@@ -683,12 +683,13 @@ g_get_user_database_entry (void)
+               }
+           }
+         while (!pw);
+-#  endif /* HAVE_POSIX_GETPWUID_R || HAVE_NONPOSIX_GETPWUID_R */
++#  else /* HAVE_POSIX_GETPWUID_R || HAVE_NONPOSIX_GETPWUID_R */
+ 
+         if (!pw)
+           {
+             pw = getpwuid (getuid ());
+           }
++# endif /* !HAVE_POSIX_GETPWUID_R || !HAVE_NONPOSIX_GETPWUID_R */
+         if (pw)
+           {
+             e.user_name = g_strdup (pw->pw_name);
