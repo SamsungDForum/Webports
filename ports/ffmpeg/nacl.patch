@@ -1,25 +1,10 @@
-diff --git a/Makefile b/Makefile
-index 8aa72fd..8670c16 100644
---- a/Makefile
-+++ b/Makefile
-@@ -125,7 +125,9 @@ ffprobe.o cmdutils.o libavcodec/utils.o libavformat/utils.o libavdevice/avdevice
- 
- $(PROGS): %$(PROGSSUF)$(EXESUF): %$(PROGSSUF)_g$(EXESUF)
- 	$(CP) $< $@
--	$(STRIP) $@
-+	-if test "$(NACL_ARCH)" != "le32"; then \
-+		$(STRIP) $@; \
-+	fi
- 
- %$(PROGSSUF)_g$(EXESUF): %.o $(FF_DEP_LIBS)
- 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $(OBJS-$*) $(FF_EXTRALIBS)
 diff --git a/configure b/configure
-index d60ffd8..8bd8e21 100755
+index 231c6c3..7fb1ce7 100755
 --- a/configure
 +++ b/configure
-@@ -3184,7 +3184,11 @@ ln_s_default="ln -s -f"
+@@ -3358,7 +3358,11 @@ install="install"
+ ln_s_default="ln -s -f"
  nm_default="nm -g"
- objformat="elf"
  pkg_config_default=pkg-config
 -ranlib_default="ranlib"
 +if [ $NACL_ARCH != le32 ] && ranlib 2>&1 | grep -q "\-D "; then
@@ -29,91 +14,17 @@ index d60ffd8..8bd8e21 100755
 +fi
  strip_default="strip"
  version_script='--version-script'
- yasmexe_default="yasm"
-@@ -5467,7 +5471,13 @@ if ! disabled network; then
- fi
- 
- check_builtin atomic_cas_ptr atomic.h "void **ptr; void *oldval, *newval; atomic_cas_ptr(ptr, oldval, newval)"
--check_builtin atomic_compare_exchange "" "int *ptr, *oldval; int newval; __atomic_compare_exchange_n(ptr, oldval, newval, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)"
-+# Check for both __atomic_compare_exchange_n and __atomic_add_fetch since
-+# HAVE_ATOMIC_COMPARE_EXCHANGE should only be defined if both are present.
-+# Currently PNaCl supports __atomic_compare_exchange_n but not
-+# __atomic_add_fetch so testing for __atomic_compare_exchange_n was not
-+# enough.
-+# https://code.google.com/p/nativeclient/issues/detail?id=3941
-+check_builtin atomic_compare_exchange "" "int *ptr, *oldval; int newval; __atomic_compare_exchange_n(ptr, oldval, newval, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); __atomic_add_fetch(ptr, 1, __ATOMIC_SEQ_CST)"
- check_builtin machine_rw_barrier mbarrier.h "__machine_rw_barrier()"
- check_builtin MemoryBarrier windows.h "MemoryBarrier()"
- check_builtin sarestart signal.h "SA_RESTART"
-@@ -5748,7 +5758,7 @@ enabled libtwolame        && require libtwolame twolame.h twolame_init -ltwolame
- enabled libv4l2           && require_pkg_config libv4l2 libv4l2.h v4l2_ioctl
- enabled libvidstab        && require_pkg_config "vidstab >= 0.98" vid.stab/libvidstab.h vsMotionDetectInit
- enabled libvo_amrwbenc    && require libvo_amrwbenc vo-amrwbenc/enc_if.h E_IF_init -lvo-amrwbenc
--enabled libvorbis         && require libvorbis vorbis/vorbisenc.h vorbis_info_init -lvorbisenc -lvorbis -logg
-+enabled libvorbis         && require libvorbis vorbis/vorbisenc.h vorbis_info_init -lvorbisenc -lvorbis -logg -lm
- 
- enabled libvpx            && {
-     enabled libvpx_vp8_decoder && {
-diff --git a/ffmpeg.c b/ffmpeg.c
-index 6b7ce72..fbd7053 100644
---- a/ffmpeg.c
-+++ b/ffmpeg.c
-@@ -389,11 +389,13 @@ void term_init(void)
-     }
- #endif
- 
-+#ifdef __GLIBC__
-     signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).    */
-     signal(SIGTERM, sigterm_handler); /* Termination (ANSI).  */
- #ifdef SIGXCPU
-     signal(SIGXCPU, sigterm_handler);
- #endif
-+#endif /* __GLIBC__ */
- #if HAVE_SETCONSOLECTRLHANDLER
-     SetConsoleCtrlHandler((PHANDLER_ROUTINE) CtrlHandler, TRUE);
- #endif
-@@ -4492,7 +4494,7 @@ static int transcode(void)
- 
- static int64_t getutime(void)
- {
--#if HAVE_GETRUSAGE
-+#if HAVE_GETRUSAGE && !defined(__native_client__)
-     struct rusage rusage;
- 
-     getrusage(RUSAGE_SELF, &rusage);
-@@ -4510,7 +4512,7 @@ static int64_t getutime(void)
- 
- static int64_t getmaxrss(void)
- {
--#if HAVE_GETRUSAGE && HAVE_STRUCT_RUSAGE_RU_MAXRSS
-+#if HAVE_GETRUSAGE && HAVE_STRUCT_RUSAGE_RU_MAXRSS && !defined(__native_client__)
-     struct rusage rusage;
-     getrusage(RUSAGE_SELF, &rusage);
-     return (int64_t)rusage.ru_maxrss * 1024;
-diff --git a/ffmpeg_opt.c b/ffmpeg_opt.c
-index 56d6e2f..ffdbba5 100644
---- a/ffmpeg_opt.c
-+++ b/ffmpeg_opt.c
-@@ -851,7 +851,9 @@ static void assert_file_overwrite(const char *filename)
-                 fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
-                 fflush(stderr);
-                 term_exit();
-+#ifdef __GLIBC__
-                 signal(SIGINT, SIG_DFL);
-+#endif /* __GLIBC__ */
-                 if (!read_yesno()) {
-                     av_log(NULL, AV_LOG_FATAL, "Not overwriting - exiting\n");
-                     exit_program(1);
+ x86asmexe_default="nasm"
 diff --git a/libavcodec/avcodec.h b/libavcodec/avcodec.h
-index e5e7f42..9c760b3 100644
+index 18c3e3e..94d2df1 100644
 --- a/libavcodec/avcodec.h
 +++ b/libavcodec/avcodec.h
-@@ -1536,7 +1536,12 @@ enum AVPacketSideDataType {
-      * should be associated with a video stream and containts data in the form
-      * of the AVMasteringDisplayMetadata struct.
+@@ -1614,7 +1614,12 @@ enum AVPacketSideDataType {
+      * If its value becomes huge, some code using it
+      * needs to be updated as it assumes it to be smaller than other limits.
       */
--    AV_PKT_DATA_MASTERING_DISPLAY_METADATA
-+    AV_PKT_DATA_MASTERING_DISPLAY_METADATA,
+-    AV_PKT_DATA_NB
++    AV_PKT_DATA_NB,
 +
 +    /**
 +     * Encryption metadata - iv, kid and subsamples
@@ -122,9 +33,9 @@ index e5e7f42..9c760b3 100644
  };
  
  #define AV_PKT_DATA_QUALITY_FACTOR AV_PKT_DATA_QUALITY_STATS //DEPRECATED
-@@ -1639,6 +1644,19 @@ typedef struct AVPacket {
-  **/
- #define AV_PKT_FLAG_DISCARD   0x0004
+@@ -1724,6 +1729,19 @@ typedef struct AVPacket {
+  */
+ #define AV_PKT_FLAG_TRUSTED   0x0008
  
 +typedef struct AVEncBytes {
 +    uint32_t bytes_of_clear_data;
@@ -143,10 +54,10 @@ index e5e7f42..9c760b3 100644
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT  = 0x0001,
      AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT = 0x0002,
 diff --git a/libavformat/Makefile b/libavformat/Makefile
-index 5d827d3..ac39371 100644
+index df709c2..5514aaf 100644
 --- a/libavformat/Makefile
 +++ b/libavformat/Makefile
-@@ -4,6 +4,10 @@ NAME = avformat
+@@ -3,8 +3,13 @@ DESC = FFmpeg container format library
  
  HEADERS = avformat.h                                                    \
            avio.h                                                        \
@@ -156,9 +67,12 @@ index 5d827d3..ac39371 100644
 +          url.h                                                         \
            version.h                                                     \
  
++
  OBJS = allformats.o         \
+        avio.o               \
+        aviobuf.o            \
 diff --git a/libavformat/avformat.h b/libavformat/avformat.h
-index f9f4d72..36032a1 100644
+index b0de66a..9504476 100644
 --- a/libavformat/avformat.h
 +++ b/libavformat/avformat.h
 @@ -870,6 +870,12 @@ typedef struct AVStreamInternal AVStreamInternal;
@@ -174,10 +88,10 @@ index f9f4d72..36032a1 100644
  /**
   * Stream structure.
   * New fields can be added to the end with minor version bumps.
-@@ -1899,6 +1905,13 @@ typedef struct AVFormatContext {
-      * - decoding: set by user through AVOptions (NO direct access)
+@@ -1917,6 +1923,13 @@ typedef struct AVFormatContext {
+      * - decoding: set by user
       */
-     char *protocol_blacklist;
+     int max_streams;
 +
 +    /**
 +     * Each entry contains data extracted from the pssh box and may be
@@ -187,14 +101,14 @@ index f9f4d72..36032a1 100644
 +    uint32_t protection_system_data_count;
  } AVFormatContext;
  
- int av_format_get_probe_score(const AVFormatContext *s);
+ /**
 diff --git a/libavformat/isom.h b/libavformat/isom.h
-index 9038057..a9d4481 100644
+index b9380e9..fc0c018 100644
 --- a/libavformat/isom.h
 +++ b/libavformat/isom.h
-@@ -115,6 +115,16 @@ typedef struct MOVFragmentIndex {
-     MOVFragmentIndexItem *items;
- } MOVFragmentIndex;
+@@ -127,6 +127,16 @@ typedef struct MOVIndexRange {
+     int64_t end;
+ } MOVIndexRange;
  
 +typedef struct MOVEncryptionInfo {
 +    uint8_t crypt_byte_block;
@@ -209,13 +123,14 @@ index 9038057..a9d4481 100644
  typedef struct MOVStreamContext {
      AVIOContext *pb;
      int pb_is_copied;
-@@ -185,8 +195,15 @@ typedef struct MOVStreamContext {
+@@ -209,9 +219,16 @@ typedef struct MOVStreamContext {
          uint8_t* auxiliary_info_end;
          uint8_t* auxiliary_info_pos;
          uint8_t auxiliary_info_default_size;
 +        uint32_t auxiliary_info_sample_count;
          uint8_t* auxiliary_info_sizes;
          size_t auxiliary_info_sizes_count;
+         int64_t auxiliary_info_index;
 +        uint64_t* auxiliary_info_offsets;
 +        size_t auxiliary_info_offsets_count;
 +
@@ -226,20 +141,18 @@ index 9038057..a9d4481 100644
      } cenc;
  } MOVStreamContext;
 diff --git a/libavformat/mov.c b/libavformat/mov.c
-old mode 100644
-new mode 100755
-index 1e21418..55f9845
+index 9a6c3b3..a23c5a3 100644
 --- a/libavformat/mov.c
 +++ b/libavformat/mov.c
-@@ -70,6 +70,7 @@ typedef struct MOVParseTableEntry {
- 
- static int mov_read_default(MOVContext *c, AVIOContext *pb, MOVAtom atom);
+@@ -76,6 +76,7 @@ static int mov_read_default(MOVContext *c, AVIOContext *pb, MOVAtom atom);
  static int mov_read_mfra(MOVContext *c, AVIOContext *f);
+ static int64_t add_ctts_entry(MOVStts** ctts_data, unsigned int* ctts_count, unsigned int* allocated_size,
+                               int count, int duration);
 +static int mov_read_seig(MOVContext *c, AVIOContext *pb, MOVAtom atom, int version);
  
  static int mov_metadata_track_or_disc_number(MOVContext *c, AVIOContext *pb,
                                               unsigned len, const char *key)
-@@ -974,12 +975,127 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -989,12 +990,127 @@ static int mov_read_pasp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      return 0;
  }
  
@@ -314,7 +227,7 @@ index 1e21418..55f9845
 +            sample_data_size = (size_t)
 +                    sc->cenc.auxiliary_info_default_size * sc->sample_count;
 +            if (!sample_data_size && sc->cenc.auxiliary_info_sample_count) {
-+                sample_data_size = 
++                sample_data_size =
 +                    sc->cenc.auxiliary_info_default_size * sc->cenc.auxiliary_info_sample_count;
 +            }
 +        } else if (sc->cenc.auxiliary_info_sizes) {
@@ -367,7 +280,36 @@ index 1e21418..55f9845
      return 0; /* now go for moov */
  }
  
-@@ -2752,6 +2868,9 @@ static int mov_read_sbgp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -1170,6 +1286,28 @@ static int mov_read_moov(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+ 
+ static int mov_read_moof(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+ {
++#if defined(__native_client__)
++    if (!pb->seekable) {
++        int i;
++        for (i = 0; i < c->fc->nb_streams; i++) {
++            AVStream *st = c->fc->streams[i];
++            MOVStreamContext *sc = st->priv_data;
++
++            av_freep(&sc->ctts_data);
++            sc->ctts_allocated_size = 0;
++            sc->ctts_count = 0;
++            sc->ctts_sample = 0;
++            sc->ctts_index = 0;
++            sc->current_sample = 0;
++            sc->current_index = 0;
++
++            av_freep(&st->index_entries);
++            st->index_entries_allocated_size = 0;
++            st->nb_index_entries = 0;
++        }
++    }
++#endif
++
+     if (!c->has_looked_for_mfra && c->use_mfra_for > 0) {
+         c->has_looked_for_mfra = 1;
+         if (pb->seekable & AVIO_SEEKABLE_NORMAL) {
+@@ -2792,6 +2930,9 @@ static int mov_read_sbgp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      version = avio_r8(pb); /* version */
      avio_rb24(pb); /* flags */
      grouping_type = avio_rl32(pb);
@@ -377,7 +319,7 @@ index 1e21418..55f9845
      if (grouping_type != MKTAG( 'r','a','p',' '))
          return 0; /* only support 'rap ' grouping */
      if (version == 1)
-@@ -4581,17 +4700,22 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -5208,17 +5349,22 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      MOVStreamContext *sc;
      size_t auxiliary_info_size;
  
@@ -403,7 +345,7 @@ index 1e21418..55f9845
      avio_r8(pb); /* version */
      sc->cenc.use_subsamples = avio_rb24(pb) & 0x02; /* flags */
  
-@@ -4619,13 +4743,17 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -5246,13 +5392,17 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
          return AVERROR_INVALIDDATA;
      }
  
@@ -426,7 +368,7 @@ index 1e21418..55f9845
  }
  
  static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
-@@ -4636,17 +4764,20 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -5263,17 +5413,20 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      int atom_header_size;
      int flags;
  
@@ -450,7 +392,7 @@ index 1e21418..55f9845
      atom_header_size = 9;
  
      avio_r8(pb); /* version */
-@@ -4660,7 +4791,7 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -5287,7 +5440,7 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
      }
  
      sc->cenc.auxiliary_info_default_size = avio_r8(pb);
@@ -459,7 +401,7 @@ index 1e21418..55f9845
  
      if (atom.size <= atom_header_size) {
          return 0;
-@@ -4684,6 +4815,161 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+@@ -5383,6 +5536,161 @@ static int mov_seek_auxiliary_info(MOVContext *c, MOVStreamContext *sc, int64_t
      return 0;
  }
  
@@ -618,10 +560,10 @@ index 1e21418..55f9845
 +    return 0;
 +}
 +
- static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int size)
+ static int cenc_filter(MOVContext *c, MOVStreamContext *sc, int64_t index, uint8_t *input, int size)
  {
      uint32_t encrypted_bytes;
-@@ -4750,6 +5036,78 @@ static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int
+@@ -5458,6 +5766,78 @@ static int cenc_filter(MOVContext *c, MOVStreamContext *sc, int64_t index, uint8
      return 0;
  }
  
@@ -697,10 +639,10 @@ index 1e21418..55f9845
 +    return 0;
 +}
 +
- static int mov_seek_auxiliary_info(AVFormatContext *s, MOVStreamContext *sc)
+ static int mov_read_dops(MOVContext *c, AVIOContext *pb, MOVAtom atom)
  {
-     size_t auxiliary_info_seek_offset = 0;
-@@ -4858,6 +5216,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
+     const int OPUS_SEEK_PREROLL_MS = 80;
+@@ -5584,6 +5964,10 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
  { MKTAG('f','r','m','a'), mov_read_frma },
  { MKTAG('s','e','n','c'), mov_read_senc },
  { MKTAG('s','a','i','z'), mov_read_saiz },
@@ -708,10 +650,10 @@ index 1e21418..55f9845
 +{ MKTAG('s','c','h','i'), mov_read_default },
 +{ MKTAG('t','e','n','c'), mov_read_tenc },
 +{ MKTAG('p','s','s','h'), mov_read_pssh },
- { 0, NULL }
- };
- 
-@@ -5276,6 +5638,9 @@ static int mov_read_close(AVFormatContext *s)
+ { MKTAG('d','f','L','a'), mov_read_dfla },
+ { MKTAG('s','t','3','d'), mov_read_st3d }, /* stereoscopic 3D video box */
+ { MKTAG('s','v','3','d'), mov_read_sv3d }, /* spherical video box */
+@@ -6011,6 +6395,9 @@ static int mov_read_close(AVFormatContext *s)
  
          av_freep(&sc->cenc.auxiliary_info);
          av_freep(&sc->cenc.auxiliary_info_sizes);
@@ -719,9 +661,9 @@ index 1e21418..55f9845
 +        mov_encryption_info_free(&sc->cenc.default_encryption_info);
 +        mov_encryption_info_free(&sc->cenc.sample_encryption_info);
          av_aes_ctr_free(sc->cenc.aes_ctr);
-     }
  
-@@ -5642,6 +6007,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
+         av_freep(&sc->stereo3d);
+@@ -6437,6 +6824,11 @@ static int should_retry(AVIOContext *pb, int error_code) {
      if (error_code == AVERROR_EOF || avio_feof(pb))
          return 0;
  
@@ -733,7 +675,7 @@ index 1e21418..55f9845
      return 1;
  }
  
-@@ -5838,6 +6208,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -6642,6 +7034,14 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
          if (ret) {
              return ret;
          }
@@ -749,10 +691,10 @@ index 1e21418..55f9845
  
      return 0;
 diff --git a/libavformat/utils.c b/libavformat/utils.c
-index 5348e0d..0a8bb62 100644
+index 93722e3..688180f 100644
 --- a/libavformat/utils.c
 +++ b/libavformat/utils.c
-@@ -4146,6 +4146,7 @@ void ff_free_stream(AVFormatContext *s, AVStream *st)
+@@ -4302,6 +4302,7 @@ void ff_free_stream(AVFormatContext *s, AVStream *st)
  void avformat_free_context(AVFormatContext *s)
  {
      int i;
@@ -760,16 +702,13 @@ index 5348e0d..0a8bb62 100644
  
      if (!s)
          return;
-@@ -4175,6 +4176,9 @@ void avformat_free_context(AVFormatContext *s)
-     av_dict_free(&s->metadata);
+@@ -4333,6 +4334,9 @@ void avformat_free_context(AVFormatContext *s)
      av_freep(&s->streams);
+     flush_packet_queue(s);
      av_freep(&s->internal);
 +    for (j = 0; j < s->protection_system_data_count; ++j)
 +        av_freep(&s->protection_system_data[j].pssh_box);
 +    av_freep(&s->protection_system_data);
-     flush_packet_queue(s);
      av_free(s);
  }
--- 
-2.15.0
-
+ 

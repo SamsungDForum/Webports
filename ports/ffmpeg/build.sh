@@ -46,6 +46,7 @@ ConfigureStep() {
     --enable-filter=transpose \
     --enable-network \
     --disable-decoder=dpx \
+    --disable-linux-perf \
     --prefix=${PREFIX} \
     ${lib_type} \
     ${extra_args}

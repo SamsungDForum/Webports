@@ -1,7 +1,7 @@
 NAME=ffmpeg
-VERSION=3.2.2
-URL=http://ffmpeg.org/releases/ffmpeg-3.2.2.tar.bz2
+VERSION=3.4.2
+URL=http://ffmpeg.org/releases/ffmpeg-3.4.2.tar.bz2
 LICENSE=GPL,LGPL
 CONFLICTS=(libav)
-SHA1=1fdf3a0e5f1700067ab8b8f0c77c5a4e4505b606
+SHA1=17116d2ca13b91c53db2d4c3976b2ab56f9f69b6
 DISABLED_TOOLCHAIN=(emscripten)
