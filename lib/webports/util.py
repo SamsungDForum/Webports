@@ -55,6 +55,8 @@ PEXE_MAGIC = 'PEXE'
 log_level = LOG_INFO
 color_mode = 'auto'
 
+current_toolchain = None
+
 
 def colorize(message, color):
   if termcolor and colorize.enabled:
@@ -271,9 +273,55 @@ def setup_emscripten():
     find_in_path('node')
 
 
+def get_emscripten_version():
+  """Returns the version (as a string) of the current Emscripten."""
+  version_file_path = os.path.join(get_emscripten_root(),
+                                   'emscripten-version.txt')
+  emscripten_version = None
+  with open(version_file_path, 'r') as version_file:
+    emscripten_version = version_file.read().strip().replace('"', '')
+
+  return emscripten_version
+
+
+def check_emscripten_version(version):
+  """Returns True if the currently used Emscripten is 'version' or above."""
+  curr_version = get_emscripten_version()
+
+  current = map(int, curr_version.split('.'))
+  required = map(int, version.split('.'))
+
+  if len(current) != 3:
+    raise Error("%s is not in expected format MAJOR.MINOR.PATCH" % curr_version)
+
+  if len(required) != 3:
+    raise Error("%s is not in expected format MAJOR.MINOR.PATCH" % version)
+
+  for i in range(3):
+    if current[i] > required[i]:
+      return True
+    elif current[i] < required[i]:
+      return False
+
+  return True
+
+
+def get_emscripten_revision():
+  version = map(int, get_emscripten_version().split('.'))
+  return reduce(lambda x, y: 1000 * x + y, version)
+
+
+def check_emscripten_root():
+  root = get_emscripten_root()
+  if not os.path.isdir(root):
+    raise error.Error('$EMSCRIPTEN does not exist: %s' % root)
+
 @memoize
 def get_sdk_version():
   """Returns the version (as a string) of the current SDK."""
+  if current_toolchain == 'emscripten':
+    return get_emscripten_version()
+
   getos = os.path.join(get_sdk_root(), 'tools', 'getos.py')
   version = subprocess.check_output([getos, '--sdk-version']).strip()
   return version
@@ -281,6 +329,9 @@ def get_sdk_version():
 
 def check_sdk_version(version):
   """Returns True if the currently configured SDK is 'version' or above."""
+  if current_toolchain == 'emscripten':
+    return check_emscripten_version(version)
+
   return int(get_sdk_version()) >= int(version)
 
 
@@ -295,6 +346,17 @@ def get_sdk_revision():
 @memoize
 def get_platform():
   """Returns the current platform name according getos.py."""
+  if current_toolchain == 'emscripten':
+    """Copied GetPlatform function from getos.py"""
+    if sys.platform.startswith('cygwin') or sys.platform.startswith('win'):
+      return 'win'
+    elif sys.platform.startswith('darwin'):
+      return 'mac'
+    elif sys.platform.startswith('linux'):
+      return 'linux'
+    else:
+      raise Error("Unknown platform: %s" % sys.platform)
+
   getos = os.path.join(get_sdk_root(), 'tools', 'getos.py')
   platform = subprocess.check_output([getos]).strip()
   return platform
@@ -377,6 +439,10 @@ def is_installed(package_name, config, stamp_content=None):
 
 def check_sdk_root():
   """Check validity of NACL_SDK_ROOT."""
+  if current_toolchain == 'emscripten':
+    check_emscripten_root()
+    return
+
   root = get_sdk_root()
 
   if not os.path.isdir(root):

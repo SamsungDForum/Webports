@@ -294,7 +294,13 @@ else
   InitializeNaClGccToolchain
 fi
 
-NACL_SDK_VERSION=$(${NACL_SDK_ROOT}/tools/getos.py --sdk-version)
+NACL_SDK_VERSION=""
+if [ "${TOOLCHAIN}" == "emscripten" ]; then
+  NACL_SDK_VERSION=$(cat $EMSCRIPTEN/emscripten-version.txt)
+  NACL_SDK_VERSION=${NACL_SDK_VERSION//\"/}
+else
+  NACL_SDK_VERSION=$(${NACL_SDK_ROOT}/tools/getos.py --sdk-version)
+fi
 
 # As of version 33 the PNaCl C++ standard library is LLVM's libc++,
 # others use GCC's libstdc++.
