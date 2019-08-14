@@ -12,4 +12,8 @@ if [ "${NACL_DEBUG}" = "1" ]; then
   NACLPORTS_CPPFLAGS+=" -DDEBUG"
 fi
 
+if [ "${TOOLCHAIN}" == "emscripten" ]; then
+  NACLPORTS_CFLAGS+=" -Wno-implicit-function-declaration"
+fi
+
 export compat_cv_func_snprintf_works=yes

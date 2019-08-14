@@ -29,11 +29,19 @@ ConfigureStep() {
   # Override $SYSTEM $RELEASE and $MACHINE, otherwise openssl's
   # config will use uname to try and guess them which has
   # different results depending on the host OS.
-  local machine="le32${NACL_LIBC}"
-  SYSTEM=nacl RELEASE=0 MACHINE=${machine} \
+  if [[ ${TOOLCHAIN} == emscripten ]]; then
+    local machine="le32emscripten"
+    SYSTEM=wasm RELEASE=0 MACHINE=${machine} \
     CC=${NACLCC} AR=${NACLAR} RANLIB=${NACLRANLIB} \
     LogExecute ./config \
     --prefix=${PREFIX} no-asm no-hw no-krb5 ${EXTRA_ARGS} -D_GNU_SOURCE
+  else
+    local machine="le32${NACL_LIBC}"
+    SYSTEM=nacl RELEASE=0 MACHINE=${machine} \
+      CC=${NACLCC} AR=${NACLAR} RANLIB=${NACLRANLIB} \
+      LogExecute ./config \
+      --prefix=${PREFIX} no-asm no-hw no-krb5 ${EXTRA_ARGS} -D_GNU_SOURCE
+  fi
 }
 
 
@@ -57,6 +65,15 @@ InstallStep() {
 
 
 TestStep() {
+  if [[ ${TOOLCHAIN} == emscripten ]]; then
+    echo "TODO Run OpenSSL test when building with emscripten"
+  else
+    RunTestsNaCl
+  fi
+}
+
+
+RunTestsNaCl() {
   # TODO(jvoung): Integrate better with "make test".
   # We'd need to make util/shlib_wrap.sh run the sel_ldr scripts instead
   # of trying to run the nexes directly.

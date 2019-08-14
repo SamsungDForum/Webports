@@ -1,7 +1,7 @@
 diff --git a/Configure b/Configure
 --- a/Configure
 +++ b/Configure
-@@ -419,6 +419,13 @@ my %table=(
+@@ -429,6 +429,16 @@ my %table=(
  "linux-x86_64-icc", "icc:-DL_ENDIAN -O2::-D_REENTRANT::-ldl -no_cpprt:SIXTY_FOUR_BIT_LONG RC4_CHUNK DES_INT DES_UNROLL:${x86_64_asm}:elf:dlfcn:linux-shared:-fPIC::.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR):::64",
  "linux-x32",	"gcc:-mx32 -DL_ENDIAN -O3 -Wall::-D_REENTRANT::-ldl:SIXTY_FOUR_BIT RC4_CHUNK_LL DES_INT DES_UNROLL:${x86_64_asm}:elf:dlfcn:linux-shared:-fPIC:-mx32:.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR):::x32",
  "linux64-s390x",	"gcc:-m64 -DB_ENDIAN -O3 -Wall::-D_REENTRANT::-ldl:SIXTY_FOUR_BIT_LONG RC4_CHAR RC4_CHUNK DES_INT DES_UNROLL:${s390x_asm}:64:dlfcn:linux-shared:-fPIC:-m64:.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR):::64",
@@ -11,6 +11,9 @@ diff --git a/Configure b/Configure
 +"nacl-le32newlib",     "gcc:-DL_ENDIAN -DTERMIOS -O3 -fomit-frame-pointer -Wall::-D_REENTRANT:::BN_LLONG ${x86_gcc_des} ${x86_gcc_opts}:${x86_asm}:a.out",
 +"nacl-le32bionic",     "gcc:-DL_ENDIAN -DTERMIOS -O3 -fomit-frame-pointer -Wall::-D_REENTRANT::-ldl:BN_LLONG ${x86_gcc_des} ${x86_gcc_opts}:${x86_elf_asm}:dlfcn:linux-shared:-fPIC::.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR)",
 +"nacl-le32glibc",      "gcc:-DL_ENDIAN -DTERMIOS -O3 -fomit-frame-pointer -Wall::-D_REENTRANT::-ldl:BN_LLONG ${x86_gcc_des} ${x86_gcc_opts}:${x86_elf_asm}:dlfcn:linux-shared:-fPIC::.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR)",
++
++#### Emscripten config
++"wasm-le32emscripten",    "emcc:-DL_ENDIAN -DTERMIOS -O3 -fomit-frame-pointer -Wall::-D_REENTRANT:::BN_LLONG ${x86_gcc_des} ${x86_gcc_opts}:${x86_asm}:a.out",
 +
  #### So called "highgprs" target for z/Architecture CPUs
  # "Highgprs" is kernel feature first implemented in Linux 2.6.32, see
@@ -43,13 +46,14 @@ diff --git a/apps/speed.c b/apps/speed.c
 diff --git a/config b/config
 --- a/config
 +++ b/config
-@@ -679,6 +679,9 @@ case "$GUESSOS" in
+@@ -679,6 +679,10 @@ case "$GUESSOS" in
  	#fi
  	OUT="linux64-s390x"
  	;;
 +  le32newlib-*-nacl) OUT="nacl-le32newlib" ;;
 +  le32bionic-*-nacl) OUT="nacl-le32bionic" ;;
 +  le32glibc-*-nacl) OUT="nacl-le32glibc" ;;
++  le32emscripten-*-wasm) OUT="wasm-le32emscripten" ;;
    x86_64-*-linux?) OUT="linux-x86_64" ;;
    *86-*-linux2) OUT="linux-elf"
  	if [ "$GCCVER" -gt 28 ]; then
@@ -126,3 +130,15 @@ https://github.com/openssl/openssl/commit/104ce8a9f02d250dd43c255eb7b8747e81b294
 +    cleanse_ctr = (unsigned char)ctr;
 -    memset_func(ptr, 0, len);
  }
+diff --git a/test/Makefile b/test/Makefile
+--- a/test/Makefile
++++ b/test/Makefile
+@@ -5,7 +5,7 @@
+ DIR=		test
+ TOP=		..
+ CC=		cc
+-INCLUDES=	-I$(TOP) -I../include $(KRB5_INCLUDES)
++INCLUDES=	-I. -I$(TOP) -I../include $(KRB5_INCLUDES)
+ CFLAG=		-g
+ MAKEDEPEND=	$(TOP)/util/domd $(TOP) -MD $(MAKEDEPPROG)
+ PERL=		perl
