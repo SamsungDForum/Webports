@@ -14,6 +14,7 @@ fi
 
 if [ "${TOOLCHAIN}" == "emscripten" ]; then
   NACLPORTS_CFLAGS+=" -Wno-implicit-function-declaration"
+  export AR=${NACLAR}
 fi
 
 export compat_cv_func_snprintf_works=yes
