@@ -10,3 +10,18 @@ diff --git a/arm/filter_neon.S b/arm/filter_neon.S
  .section .note.GNU-stack,"",%progbits /* mark stack as non-executable */
  #endif
  
+diff --git a/configure b/configure
+--- a/configure
++++ b/configure
+@@ -12948,6 +12948,11 @@ if test $ac_cv_func_strtod = no; then
+ esac
+ 
+ ac_fn_c_check_func "$LINENO" "pow" "ac_cv_func_pow"
++
++if test "$host" = "asmjs-unknown-emscripten"; then
++  ac_cv_func_pow="yes"
++fi
++
+ if test "x$ac_cv_func_pow" = xyes; then :
+ 
+ fi
