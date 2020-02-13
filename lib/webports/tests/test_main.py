@@ -5,7 +5,7 @@
 import os
 import mock
 from mock import patch, Mock
-import StringIO
+import io
 
 import common
 import webports.__main__
@@ -31,9 +31,9 @@ class TestMain(common.NaclportsTest):
   def test_error_report(self):
     # Verify that exceptions of the type error.Error are printed
     # to stderr and result in a return code of 1
-    with patch('sys.stderr', new_callable=StringIO.StringIO) as stderr:
+    with patch('sys.stderr', new_callable=io.StringIO) as stderr:
       self.assertEqual(webports.__main__.main(None), 1)
-    self.assertRegexpMatches(stderr.getvalue(), '^webports: oops')
+    self.assertRegex(stderr.getvalue(), '^webports: oops')
 
   @patch('webports.__main__.cmd_pkg_clean')
   def test_main_command_dispatch(self, cmd_pkg_clean):
@@ -65,11 +65,11 @@ class TestCommands(common.NaclportsTest):
     pkg = Mock(NAME='foo', VERSION='0.1')
     with patch('webports.installed_package.installed_package_iterator',
                Mock(return_value=[pkg])):
-      with patch('sys.stdout', new_callable=StringIO.StringIO) as stdout:
+      with patch('sys.stdout', new_callable=io.StringIO) as stdout:
         options = Mock(all=False)
         webports.__main__.cmd_list(config, options, [])
         lines = stdout.getvalue().splitlines()
-        self.assertRegexpMatches(lines[0], '^foo\\s+0.1$')
+        self.assertRegex(lines[0], '^foo\\s+0.1$')
         self.assertEqual(len(lines), 1)
 
   def test_list_command_verbose(self):
@@ -77,11 +77,11 @@ class TestCommands(common.NaclportsTest):
     pkg = Mock(NAME='foo', VERSION='0.1')
     with patch('webports.installed_package.installed_package_iterator',
                Mock(return_value=[pkg])):
-      with patch('sys.stdout', new_callable=StringIO.StringIO) as stdout:
+      with patch('sys.stdout', new_callable=io.StringIO) as stdout:
         options = Mock(verbosity=0, all=False)
         webports.__main__.cmd_list(config, options, [])
         lines = stdout.getvalue().splitlines()
-        self.assertRegexpMatches(lines[0], "^foo$")
+        self.assertRegex(lines[0], "^foo$")
         self.assertEqual(len(lines), 1)
 
   @patch('webports.installed_package.create_installed_package', Mock())
@@ -90,10 +90,10 @@ class TestCommands(common.NaclportsTest):
     options = Mock()
     file_mock = common.mock_file_object('FOO=bar\n')
 
-    with patch('sys.stdout', new_callable=StringIO.StringIO) as stdout:
+    with patch('sys.stdout', new_callable=io.StringIO) as stdout:
       with patch('__builtin__.open', Mock(return_value=file_mock), create=True):
         webports.__main__.cmd_info(config, options, ['foo'])
-        self.assertRegexpMatches(stdout.getvalue(), "FOO=bar")
+        self.assertRegex(stdout.getvalue(), "FOO=bar")
 
   def test_contents_command(self):
     file_list = ['foo', 'bar']
@@ -102,7 +102,7 @@ class TestCommands(common.NaclportsTest):
     package = Mock(NAME='test', files=Mock(return_value=file_list))
 
     expected_output = '\n'.join(file_list) + '\n'
-    with patch('sys.stdout', new_callable=StringIO.StringIO) as stdout:
+    with patch('sys.stdout', new_callable=io.StringIO) as stdout:
       webports.__main__.cmd_pkg_contents(package, options)
       self.assertEqual(stdout.getvalue(), expected_output)
 
@@ -111,6 +111,6 @@ class TestCommands(common.NaclportsTest):
     expected_output = [os.path.join('/package/install/path', f)
                        for f in file_list]
     expected_output = '\n'.join(expected_output) + '\n'
-    with patch('sys.stdout', new_callable=StringIO.StringIO) as stdout:
+    with patch('sys.stdout', new_callable=io.StringIO) as stdout:
       webports.__main__.cmd_pkg_contents(package, options)
       self.assertEqual(stdout.getvalue(), expected_output)

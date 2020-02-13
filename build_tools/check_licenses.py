@@ -11,7 +11,7 @@ Currently it preforms the following simple check:
    exists in the archive
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

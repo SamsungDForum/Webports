@@ -29,17 +29,17 @@ def write_ucl(outfile, ucl_dict):
   # See: https://github.com/vstakhov/libucl
   with open(outfile, 'w') as f:
     f.write('{\n')
-    for key, value in ucl_dict.iteritems():
+    for key, value in ucl_dict.items():
       if key == 'files':
         f.write('  "%s": \n  {\n' % key)
-        for file_name, file_hash in value.iteritems():
+        for file_name, file_hash in value.items():
           f.write('    "%s": "%s",\n' % (file_name, file_hash))
         f.write('  }\n')
       elif key == 'deps':
         f.write('  "%s": \n  {\n' % key)
-        for dep_name, dep_dict in value.iteritems():
+        for dep_name, dep_dict in value.items():
           f.write('    "%s": \n    {\n' % dep_name)
-          for dep_dict_key, dep_dict_value in dep_dict.iteritems():
+          for dep_dict_key, dep_dict_value in dep_dict.items():
             f.write('        "%s": "%s",\n' % (dep_dict_key, dep_dict_value))
           f.write('    },\n')
         f.write('  }\n')

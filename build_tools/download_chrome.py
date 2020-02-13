@@ -122,7 +122,7 @@ def do_download(url, destination):
             filename in ('chrome-wrapper', 'chrome', 'nacl_helper',
                          'nacl_helper_bootstrap')):
           path = os.path.join(root, filename)
-          os.chmod(path, 0755)
+          os.chmod(path, 0o755)
 
     if sys.platform.startswith('linux'):
       if '64' in url:

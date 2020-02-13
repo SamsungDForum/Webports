@@ -12,7 +12,7 @@ class TestParsePkgInfo(common.NaclportsTest):
 
   def test_invalid_line(self):
     expected_error = 'Invalid info line dummy_file:1'
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       pkg_info.parse_pkg_info('line without equals sign', 'dummy_file')
 
   def test_blank_line(self):
@@ -29,7 +29,7 @@ class TestParsePkgInfo(common.NaclportsTest):
     contents = 'FOO=bar\nBAR=baz\n'
     valid = ['FOO']
     required = []
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       pkg_info.parse_pkg_info(contents, 'dummy_file', valid, required)
 
   def test_required_keys(self):
@@ -37,5 +37,5 @@ class TestParsePkgInfo(common.NaclportsTest):
     contents = 'FOO=bar\n'
     valid = ['FOO']
     required = ['BAR']
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       pkg_info.parse_pkg_info(contents, 'dummy_file', valid, required)

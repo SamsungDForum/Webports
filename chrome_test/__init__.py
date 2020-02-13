@@ -4,7 +4,7 @@
 """Test harness for testing chrome apps / extensions."""
 
 import argparse
-import cStringIO
+import io
 import contextlib
 import hashlib
 import logging
@@ -14,9 +14,9 @@ import subprocess
 import sys
 import tempfile
 import threading
-import urllib
-import urllib2
-import urlparse
+import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error, urllib.parse
+import urllib.parse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)
@@ -193,7 +193,7 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
       return
     # Check for a set of special command from the running tests.
     if len(parts) == 2 and parts[0] == '/_command':
-      params = urlparse.parse_qs(parts[1])
+      params = urllib.parse.parse_qs(parts[1])
       # Allow the tests to send out log messages.
       if ('log' in params and len(params['log']) == 1 and
           'level' in params and len(params['level']) == 1):
@@ -220,10 +220,10 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
         name = params['name'][0]
         if name in self.server.tests:
           result = 1
-          print '[ DUP!!!   ] Duplicate test: %s' % name
+          print('[ DUP!!!   ] Duplicate test: %s' % name)
         else:
           self.server.tests.add(name)
-          print '[ RUN      ] %s' % name
+          print('[ RUN      ] %s' % name)
         self.server.last_test = name
         self.send_empty_reply()
         return
@@ -236,13 +236,13 @@ class ChromeTestHandler(httpd.QuittableHTTPHandler):
         duration = params['duration'][0]
         if self.server.last_test != name:
           self.server.result = 1
-          print '[ ERR!!!   ] Return from unexpected test: %s' % name
+          print('[ ERR!!!   ] Return from unexpected test: %s' % name)
         if result == '1':
-          print '[       OK ] %s (%s)' % (name, duration)
+          print('[       OK ] %s (%s)' % (name, duration))
         else:
           self.server.result = 1
           self.server.failed_tests.add(name)
-          print '[  FAILED  ] %s (%s)' % (name, duration)
+          print('[  FAILED  ] %s (%s)' % (name, duration))
         self.server.last_test = None
         self.server.test_results += 1
         self.send_empty_reply()
@@ -393,7 +393,7 @@ def run_chrome(chrome_path, timeout, filter_string, roots, use_xvfb,
       logging.info('Chrome exited with return code %d' % returncode)
     finally:
       try:
-        with contextlib.closing(urllib2.urlopen(quit_url)) as stream:
+        with contextlib.closing(urllib.request.urlopen(quit_url)) as stream:
           stream.read()
       except Exception:
         pass
@@ -405,23 +405,23 @@ def run_chrome(chrome_path, timeout, filter_string, roots, use_xvfb,
   logging.info('Done.')
 
   if returncode == RETURNCODE_KILL:
-    print '[ TIMEOUT   ] Timed out, ran %d tests, %d failed.' % (
-        len(s.tests), len(s.failed_tests))
+    print('[ TIMEOUT   ] Timed out, ran %d tests, %d failed.' % (
+        len(s.tests), len(s.failed_tests)))
     sys.exit(1)
   elif s.expected_test_count is None:
     print('[ XXXXXXXX ] Expected test count never emitted.')
     sys.exit(1)
   elif s.test_results != s.expected_test_count:
-    print('[ XXXXXXXX ] '
+    print(('[ XXXXXXXX ] '
           'Expected %d tests, but only %d had results, with %d failures.' % (
-              s.expected_test_count, s.test_results, len(s.failed_tests)))
+              s.expected_test_count, s.test_results, len(s.failed_tests))))
     sys.exit(1)
   elif s.result != 0:
-    print '[ Failures ] Ran %d tests, %d failed.' % (len(s.tests),
-                                                     len(s.failed_tests))
+    print('[ Failures ] Ran %d tests, %d failed.' % (len(s.tests),
+                                                     len(s.failed_tests)))
     sys.exit(1)
   else:
-    print '[ Success! ] Ran %d tests.' % len(s.tests)
+    print('[ Success! ] Ran %d tests.' % len(s.tests))
 
 
 def main(argv):
@@ -466,7 +466,7 @@ def main(argv):
     for param in options.param:
       key, value = param.split('=', 1)
       params[key] = value
-    options.start_path += '?' + urllib.urlencode(params)
+    options.start_path += '?' + urllib.parse.urlencode(params)
 
   if options.verbose > 1:
     logging.getLogger().setLevel(logging.DEBUG)

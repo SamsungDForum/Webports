@@ -18,7 +18,7 @@ Usage:
  return an error.
 """
 
-from __future__ import print_function
+
 
 import hashlib
 import sys

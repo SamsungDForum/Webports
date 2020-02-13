@@ -45,8 +45,8 @@ to use the URLLoader interface, you must instead use the alternate schemes:
 import os
 import select
 import subprocess
-import urlparse
-from SimpleHTTPServer import SimpleHTTPRequestHandler
+import urllib.parse
+from http.server import SimpleHTTPRequestHandler
 
 
 class GetHandler(SimpleHTTPRequestHandler):
@@ -74,7 +74,7 @@ class GetHandler(SimpleHTTPRequestHandler):
     SimpleHTTPRequestHandler.do_POST(self)
 
   def handle_git(self, method):
-    parsed_path = urlparse.urlparse(self.path)
+    parsed_path = urllib.parse.urlparse(self.path)
     if not parsed_path.path.startswith('/git/'):
       return False
 
@@ -137,7 +137,7 @@ class GetHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-  from BaseHTTPServer import HTTPServer
+  from http.server import HTTPServer
   server = HTTPServer(('localhost', 8080), GetHandler)
-  print 'Starting server, use <Ctrl-C> to stop'
+  print('Starting server, use <Ctrl-C> to stop')
   server.serve_forever()

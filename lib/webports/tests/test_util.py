@@ -31,7 +31,7 @@ class TestUtil(unittest.TestCase):
 
   @patch.dict('os.environ', {'PATH': '/x/y/z'})
   def test_find_in_path(self):
-    with self.assertRaisesRegexp(error.Error, "command not found: foo"):
+    with self.assertRaisesRegex(error.Error, "command not found: foo"):
       util.find_in_path('foo')
 
     with patch('os.path.exists') as mock_exists:
@@ -95,7 +95,7 @@ class TestUtil(unittest.TestCase):
 class TestCheckSDKRoot(TestUtil):
 
   def test_missing_sdk_root(self):
-    with self.assertRaisesRegexp(error.Error, 'NACL_SDK_ROOT does not exist'):
+    with self.assertRaisesRegex(error.Error, 'NACL_SDK_ROOT does not exist'):
       util.check_sdk_root()
 
   @patch('os.path.exists', Mock())
@@ -109,5 +109,5 @@ class TestCheckSDKRoot(TestUtil):
       util.check_sdk_root()
 
     with patch('webports.util.MIN_SDK_VERSION', 11):
-      with self.assertRaisesRegexp(error.Error, 'requires at least version 11'):
+      with self.assertRaisesRegex(error.Error, 'requires at least version 11'):
         util.check_sdk_root()

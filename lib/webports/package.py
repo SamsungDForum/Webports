@@ -39,7 +39,7 @@ class Package(object):
                                    required_keys)
 
     # Set attributres based on pkg_info setttings.
-    for key, value in info.items():
+    for key, value in list(info.items()):
       setattr(self, key, value)
 
     self.validate()

@@ -5,7 +5,7 @@
 """Tool for re-generating port list in markdown format
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

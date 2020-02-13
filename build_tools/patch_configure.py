@@ -9,7 +9,7 @@ Once this patch makes it into upstream libtool it should eventually
 be possible to remove this completely.
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

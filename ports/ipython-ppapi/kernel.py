@@ -13,20 +13,20 @@ import time
 import json
 import logging
 import sys
-import Queue
-import thread
+import queue
+import _thread
 
-stdin_input = Queue.Queue()
-shell_input = Queue.Queue()
-stdin_output = Queue.Queue()
-shell_output = Queue.Queue()
-iopub_output = Queue.Queue()
+stdin_input = queue.Queue()
+shell_input = queue.Queue()
+stdin_output = queue.Queue()
+shell_output = queue.Queue()
+iopub_output = queue.Queue()
 
 sys_stdout = sys.stdout
 sys_stderr = sys.stderr
 
 def emit(s):
-    print >> sys_stderr, "EMITTING: %s" % (s)
+    print("EMITTING: %s" % (s), file=sys_stderr)
     time.sleep(1)
 
 import IPython
@@ -206,7 +206,7 @@ def _raw_input(prompt, parent_header):
     while True:
         try:
             stdin_input.get_nowait()
-        except Queue.Empty:
+        except queue.Empty:
             break
 
     # Send the input request.
@@ -219,7 +219,7 @@ def _raw_input(prompt, parent_header):
         try:
             reply = stdin_input.get()
         except Exception:
-            print "Invalid Message"
+            print("Invalid Message")
         except KeyboardInterrupt:
             # re-raise KeyboardInterrupt, to truncate traceback
             raise KeyboardInterrupt
@@ -228,8 +228,8 @@ def _raw_input(prompt, parent_header):
     try:
         value = py3compat.unicode_to_str(reply['content']['value'])
     except:
-        print "Got bad raw_input reply: "
-        print reply
+        print("Got bad raw_input reply: ")
+        print(reply)
         value = ''
     if value == '\x04':
         # EOF
@@ -251,10 +251,10 @@ def main_loop():
     msg_type = request_header['msg_type']
     if msg_type == 'execute_request':
       try:
-        content = msg[u'content']
-        code = content[u'code']
-        silent = content[u'silent']
-        store_history = content.get(u'store_history', not silent)
+        content = msg['content']
+        code = content['code']
+        silent = content['silent']
+        store_history = content.get('store_history', not silent)
       except:
         self.log.error("Got bad msg: ")
         self.log.error("%s", msg)
@@ -264,7 +264,7 @@ def main_loop():
       # raw_input in the user namespace.
       if content.get('allow_stdin', False):
         raw_input = lambda prompt='': _raw_input(prompt, request_header)
-        input = lambda prompt='': eval(raw_input(prompt))
+        input = lambda prompt='': eval(input(prompt))
       else:
         raw_input = input = lambda prompt='' : _no_raw_input()
 
@@ -289,7 +289,7 @@ def main_loop():
         shell.run_cell(msg['content']['code'],
                        store_history=store_history,
                        silent=silent)
-      except Exception, ex:
+      except Exception as ex:
         status = 'error'
         logging.exception('Exception occured while running cell')
       finally:
@@ -355,7 +355,7 @@ def main_loop():
       # in no restart of this script.
       raise RuntimeError
 
-thread.start_new_thread(main_loop, ())
+_thread.start_new_thread(main_loop, ())
 
 def deal_message(msg):
   channel = msg['stream']
@@ -389,5 +389,5 @@ while 1:
     try:
       msg = msg_queue.get_nowait()
       send_message(stream, msg)
-    except Queue.Empty:
+    except queue.Empty:
       pass

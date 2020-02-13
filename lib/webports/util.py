@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import reduce
 
 # Allow use of this module even if termcolor is missing.  There are many
 # standalone python scripts in build_tools that can be run directly without
@@ -41,7 +42,7 @@ arch_to_pkgarch = {
 }
 
 # Inverse of arch_to_pkgarch
-pkgarch_to_arch = {v: k for k, v in arch_to_pkgarch.items()}
+pkgarch_to_arch = {v: k for k, v in list(arch_to_pkgarch.items())}
 
 LOG_ERROR = 0
 LOG_WARN = 1
@@ -288,8 +289,8 @@ def check_emscripten_version(version):
   """Returns True if the currently used Emscripten is 'version' or above."""
   curr_version = get_emscripten_version()
 
-  current = map(int, curr_version.split('.'))
-  required = map(int, version.split('.'))
+  current = list(map(int, curr_version.split('.')))
+  required = list(map(int, version.split('.')))
 
   if len(current) != 3:
     raise Error("%s is not in expected format MAJOR.MINOR.PATCH" % curr_version)
@@ -307,7 +308,7 @@ def check_emscripten_version(version):
 
 
 def get_emscripten_revision():
-  version = map(int, get_emscripten_version().split('.'))
+  version = list(map(int, get_emscripten_version().split('.')))
   return reduce(lambda x, y: 1000 * x + y, version)
 
 

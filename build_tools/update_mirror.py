@@ -12,7 +12,7 @@ If any mirroring operations are required then the correct gsutil
 credentials will be needed.
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

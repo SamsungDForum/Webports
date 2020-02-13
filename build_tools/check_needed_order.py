@@ -27,7 +27,7 @@ def check(filename):
     elif pthread < 0 and name.startswith('libpthread.so'):
       pthread = i
   if pthread != -1 and (pthread < nacl_io or pthread < nacl_spawn):
-    print 'Executable %s has bad NEEDED order: %s' % (filename, ' '.join(names))
+    print('Executable %s has bad NEEDED order: %s' % (filename, ' '.join(names)))
     return 1
   return 0
 

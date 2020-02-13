@@ -105,7 +105,7 @@ def untar(bz2_filename):
       webports.log('Unpacking tarball...')
       tar_file = cygtar.CygTar(bz2_filename, 'r:bz2')
       tar_file.extract()
-    except Exception, err:
+    except Exception as err:
       raise webports.Error('Error unpacking %s' % str(err))
     finally:
       if tar_file:

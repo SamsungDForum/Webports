@@ -104,8 +104,8 @@ def CreateWin32Link(filepath, targpath, verbose):
   # retry for Windows which often has stale file lock issues.
   if err or not os.path.exists(filepath):
     if targ_is_dir and verbose:
-      print 'Failed to create junction %s -> %s. Copying instead.\n' % (
-          filepath, targpath)
+      print('Failed to create junction %s -> %s. Copying instead.\n' % (
+          filepath, targpath))
 
     for cnt in range(1,4):
       try:
@@ -116,9 +116,9 @@ def CreateWin32Link(filepath, targpath, verbose):
         return False
       except EnvironmentError:
         if verbose:
-          print 'Try %d: Failed hardlink %s -> %s\n' % (cnt, filepath, targpath)
+          print('Try %d: Failed hardlink %s -> %s\n' % (cnt, filepath, targpath))
     if verbose:
-      print 'Giving up.'
+      print('Giving up.')
 
 CreateWin32Link.try_hardlink = True
 CreateWin32Link.try_junction = True
@@ -175,7 +175,7 @@ class CygTar(object):
     if tarinfo.isfile():
       typeinfo = 'F'
     reable_size = ReadableSizeOf(tarinfo.size)
-    print '%s %s : %s %s' % (reable_size, typeinfo, tarinfo.name, lnk)
+    print('%s %s : %s %s' % (reable_size, typeinfo, tarinfo.name, lnk))
     return tarinfo
 
   def __AddFile(self, tarinfo, fileobj=None):
@@ -237,7 +237,7 @@ class CygTar(object):
 
     # At this point we only allow addition of "FILES"
     if not tarinfo.isfile():
-      print 'Failed to add non real file: %s' % filepath
+      print('Failed to add non real file: %s' % filepath)
       return False
 
     # Now check if it is a Cygwin style link disguised as a file.
@@ -297,7 +297,7 @@ class CygTar(object):
         cnt = self.read_file.tell()
         curdots = cnt * 50 / self.read_filesize
         if dots_outputted < curdots:
-          for dot in xrange(dots_outputted, curdots):
+          for dot in range(dots_outputted, curdots):
             sys.stdout.write('.')
           sys.stdout.flush()
           dots_outputted = curdots
@@ -328,7 +328,7 @@ class CygTar(object):
       else:
         self.tar.extract(m)
 
-    win32_symlinks_left = win32_symlinks.items()
+    win32_symlinks_left = list(win32_symlinks.items())
     while win32_symlinks_left:
       this_symlink = win32_symlinks_left.pop(0)
       name, linkname = this_symlink

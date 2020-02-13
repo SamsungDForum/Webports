@@ -5,7 +5,7 @@
 """Tool which checks the sha1 sums of all packages.
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

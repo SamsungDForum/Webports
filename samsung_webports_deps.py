@@ -18,7 +18,7 @@ def ReadWebportDeps():
       deps_content = deps_file.read()
     exec(deps_content, globals(), local_scope)
   except Exception as exception:
-    print('ERROR: Cannot read ' + deps_path + '! Reason:\n' + str(exception));
+    print(('ERROR: Cannot read ' + deps_path + '! Reason:\n' + str(exception)));
     return {}
   return local_scope.get('deps', {})
 
@@ -27,7 +27,7 @@ def SyncWebportDep(path, git_url, git_commit):
   if os.path.isdir(path):
     return True
 
-  print('* Syncing Webport dependency ' + path + '...')
+  print(('* Syncing Webport dependency ' + path + '...'))
 
   git_args = [
       'git', 'clone', git_url,
@@ -57,7 +57,7 @@ def SyncWebportDeps():
     # Google assumes repo root is src, but it's not our case. Fix path:
     third_party_index = repo_path.find("third_party/")
     if (third_party_index == -1):
-      print ('ERROR: ' + repo_path + ' is invalid path!')
+      print(('ERROR: ' + repo_path + ' is invalid path!'))
       continue
     repo_path = repo_path[third_party_index:len(repo_path)]
     if not SyncWebportDep(repo_path, git_url, git_commit):

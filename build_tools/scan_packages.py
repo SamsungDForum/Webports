@@ -8,7 +8,7 @@ This script is indended to be run periodically and the
 results checked into source control.
 """
 
-from __future__ import print_function
+
 
 import argparse
 import base64

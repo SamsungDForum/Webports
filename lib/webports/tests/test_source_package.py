@@ -63,7 +63,7 @@ class TestSourcePackage(common.NaclportsTest):
     """test that invalid source directory generates an error."""
     path = '/bad/path'
     expected_error = 'Invalid package folder: ' + path
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       source_package.SourcePackage(path)
 
   def test_valid_source_dir(self):
@@ -100,7 +100,7 @@ class TestSourcePackage(common.NaclportsTest):
   def test_get_installed_package(self):
     root = self.create_mock_package('foo')
     pkg = source_package.SourcePackage(root)
-    with self.assertRaisesRegexp(error.Error, 'package not installed: foo'):
+    with self.assertRaisesRegex(error.Error, 'package not installed: foo'):
       pkg.get_installed_package()
 
   def test_get_build_location(self):
@@ -123,7 +123,7 @@ class TestSourcePackage(common.NaclportsTest):
       pkg.extract()
 
   def test_create_package_invalid(self):
-    with self.assertRaisesRegexp(error.Error, 'Package not found: foo'):
+    with self.assertRaisesRegex(error.Error, 'Package not found: foo'):
       source_package.create_package('foo')
 
   def test_format_time_delta(self):
@@ -154,7 +154,7 @@ class TestSourcePackage(common.NaclportsTest):
   def test_disabled(self):
     root = self.create_mock_package('foo', 'DISABLED=1')
     pkg = source_package.SourcePackage(root)
-    with self.assertRaisesRegexp(error.DisabledError, 'package is disabled'):
+    with self.assertRaisesRegex(error.DisabledError, 'package is disabled'):
       pkg.check_installable()
 
   def test_disabled_arch(self):
@@ -162,7 +162,7 @@ class TestSourcePackage(common.NaclportsTest):
 
     pkg = source_package.create_package(
         'bar', config=Configuration(toolchain='clang-newlib'))
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'disabled for architecture: x86_64'):
       pkg.check_installable()
 
@@ -170,7 +170,7 @@ class TestSourcePackage(common.NaclportsTest):
     self.create_mock_package('bar', 'ARCH=(arm)')
 
     pkg = source_package.create_package('bar')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'disabled for architecture: pnacl$'):
       pkg.check_installable()
 
@@ -178,7 +178,7 @@ class TestSourcePackage(common.NaclportsTest):
     self.create_mock_package('bar', 'DISABLED_LIBC=(newlib)')
 
     pkg = source_package.create_package('bar')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'cannot be built with newlib$'):
       pkg.check_installable()
 
@@ -186,7 +186,7 @@ class TestSourcePackage(common.NaclportsTest):
     self.create_mock_package('bar', 'DISABLED_TOOLCHAIN=(pnacl)')
 
     pkg = source_package.create_package('bar')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'cannot be built with pnacl$'):
       pkg.check_installable()
 
@@ -195,7 +195,7 @@ class TestSourcePackage(common.NaclportsTest):
 
     pkg = source_package.create_package('bar',
                                         config=Configuration(toolchain='glibc'))
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'cannot be built with glibc for x86_64$'):
       pkg.check_installable()
 
@@ -209,7 +209,7 @@ class TestSourcePackage(common.NaclportsTest):
     self.create_mock_package('bar', 'DISABLED=1')
 
     pkg = source_package.create_package('foo')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'bar: package is disabled$'):
       pkg.check_installable()
 
@@ -217,7 +217,7 @@ class TestSourcePackage(common.NaclportsTest):
     self.create_mock_package('foo', 'BUILD_OS=solaris')
 
     pkg = source_package.create_package('foo')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'can only be built on solaris$'):
       pkg.check_buildable()
 
@@ -233,7 +233,7 @@ class TestSourcePackage(common.NaclportsTest):
 
     self.create_mock_package('foo3', 'MIN_SDK_VERSION=124')
     pkg = source_package.create_package('foo3')
-    with self.assertRaisesRegexp(error.DisabledError,
+    with self.assertRaisesRegex(error.DisabledError,
                                  'requires SDK version 124 or above'):
       pkg.check_buildable()
 
@@ -249,11 +249,11 @@ class TestSourcePackage(common.NaclportsTest):
       BUILD_TOOLCHAIN=pnacl
       BUILD_SDK_VERSION=1234
       ''')
-    self.assertRegexpMatches(pkg.installed_info_contents(), expected_contents)
+    self.assertRegex(pkg.installed_info_contents(), expected_contents)
 
   def test_run_git_cmd_bad_repo(self):
     os.mkdir(os.path.join(self.tempdir, '.git'))
-    with self.assertRaisesRegexp(error.Error, 'git command failed'):
+    with self.assertRaisesRegex(error.Error, 'git command failed'):
       source_package.init_git_repo(self.tempdir)
 
   def test_init_git_repo(self):
@@ -280,5 +280,5 @@ class TestSourcePackage(common.NaclportsTest):
   def test_download_missing_sha1(self, mock_download):
     self.create_mock_package('foo', 'URL=foo/bar')
     pkg = source_package.create_package('foo')
-    with self.assertRaisesRegexp(error.Error, 'missing SHA1 attribute'):
+    with self.assertRaisesRegex(error.Error, 'missing SHA1 attribute'):
       pkg.download()

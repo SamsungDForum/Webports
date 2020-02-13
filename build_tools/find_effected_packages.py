@@ -37,7 +37,7 @@ def main(args):
 
   effected_packages = find_effected_packages(options.files, options.deps,
                                              package_filter)
-  print '\n'.join(effected_packages)
+  print('\n'.join(effected_packages))
   return 0
 
 # Normally when changins files outside of the 'ports' directory will

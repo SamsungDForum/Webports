@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
-import urlparse
+import urllib.parse
 
 from webports import binary_package
 from webports import configuration
@@ -202,7 +202,7 @@ class SourcePackage(package.Package):
     if self.is_git_upstream() or self.URL is None:
       return None
 
-    return os.path.basename(urlparse.urlparse(self.URL)[2])
+    return os.path.basename(urllib.parse.urlparse(self.URL)[2])
 
   def download_location(self):
     archive = self.get_archive_filename()

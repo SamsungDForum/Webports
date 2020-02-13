@@ -7,13 +7,13 @@
 This is intended to be used for testing.
 """
 
-import BaseHTTPServer
+import http.server
 import logging
 import os
-import SimpleHTTPServer
-import SocketServer
+import http.server
+import socketserver
 import sys
-import urlparse
+import urllib.parse
 import shutil
 
 # Using 'localhost' means that we only accept connections
@@ -24,8 +24,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)
 
 
-class QuittableHTTPServer(SocketServer.ThreadingMixIn,
-                          BaseHTTPServer.HTTPServer):
+class QuittableHTTPServer(socketserver.ThreadingMixIn,
+                          http.server.HTTPServer):
   """An HTTP server that will quit when |is_running| is set to False.
 
   We also use SocketServer.ThreadingMixIn in order to handle requests
@@ -44,7 +44,7 @@ def key_value_pair(string, sep='='):
     return [string, '']
 
 
-class QuittableHTTPHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class QuittableHTTPHandler(http.server.SimpleHTTPRequestHandler):
   """A small handler that looks for '?quit=1' query in the path and shuts itself
   down if it finds that parameter."""
 
@@ -55,7 +55,7 @@ class QuittableHTTPHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     self.end_headers()
 
   def do_GET(self):
-    (_, _, _, query, _) = urlparse.urlsplit(self.path)
+    (_, _, _, query, _) = urllib.parse.urlsplit(self.path)
     url_params = dict([key_value_pair(key_value)
                        for key_value in query.split('&')])
     if 'quit' in url_params and '1' in url_params['quit']:
@@ -84,11 +84,11 @@ class QuittableHTTPHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
           f.close()
           return
 
-    SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+    http.server.SimpleHTTPRequestHandler.do_GET(self)
 
   def end_headers(self):
     self.send_header("Access-Control-Allow-Origin", "*")
-    SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
+    http.server.SimpleHTTPRequestHandler.end_headers(self)
 
   def send_partial(self, offset, length):
     """The following code is lifed from SimpleHTTPServer.send_head()

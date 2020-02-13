@@ -48,13 +48,13 @@ Example use:
     $ ./partition.py -t <index> -n <number_of_shards>
 """
 
-from __future__ import print_function
+
 
 import argparse
 import json
 import os
 import sys
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -96,11 +96,11 @@ def get_dependencies(projects):
 def download_data_from_builder(builder, build):
   max_tries = 30
 
-  for _ in xrange(max_tries):
+  for _ in range(max_tries):
     url = 'http://build.chromium.org/p/client.nacl.ports/json'
     url += '/builders/%s/builds/%d' % (builder, build)
     log_verbose('Downloading %s' % url)
-    f = urllib2.urlopen(url)
+    f = urllib.request.urlopen(url)
     try:
       data = json.loads(f.read())
       text = data['text']
@@ -217,7 +217,7 @@ def get_partition(projects, dims):
   #
   # Note that this takes into account the additional time necessary to build a
   # projects dependencies, if those dependencies have not already been built.
-  parts = [ProjectTimes() for _ in xrange(dims)]
+  parts = [ProjectTimes() for _ in range(dims)]
   sorted_projects = sorted(projects.projects, key=lambda p: -p.time)
   for project in sorted_projects:
     if any(part.has_project(project) for part in parts):
@@ -338,7 +338,7 @@ def main(args):
   webports.set_verbose(options.verbose)
 
   if options.check:
-    for num_bots in xrange(1, 7):
+    for num_bots in range(1, 7):
       print('Checking partioning with %d bot(s)' % (num_bots))
       # GetCanned with raise an Error if the canned partition information is
       # bad, which in turn will trigger a non-zero return from this script.

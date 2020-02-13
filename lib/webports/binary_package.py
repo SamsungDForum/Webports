@@ -100,7 +100,7 @@ def relocate_file(filename, dest):
     with open(filename) as f:
       data = f.read()
     mode = os.stat(filename).st_mode
-    os.chmod(filename, 0777)
+    os.chmod(filename, 0o777)
     with open(filename, 'r+') as f:
       f.write(data.replace(INSTALL_PREFIX, dest))
     os.chmod(filename, mode)

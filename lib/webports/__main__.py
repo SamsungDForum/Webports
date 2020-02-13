@@ -9,7 +9,7 @@ work with packages (e.g. 'update_mirror.py' uses it to iterate
 through all packages and mirror them on Google Cloud Storage).
 """
 
-from __future__ import print_function
+
 import os
 import subprocess
 import sys
@@ -131,7 +131,7 @@ def cmd_check(config, options, args):
     for dep in pkg.DEPENDS:
       check_deps(dep, pkg.NAME)
 
-  for pkg in installed_map.itervalues():
+  for pkg in installed_map.values():
     check_deps(pkg.NAME, None)
 
 
@@ -247,10 +247,10 @@ def run_main(args):
 
   installed_pkg_commands = ['contents', 'uninstall']
 
-  all_commands = dict(base_commands.items() + pkg_commands.items())
+  all_commands = dict(list(base_commands.items()) + list(pkg_commands.items()))
 
   epilog = "The following commands are available:\n"
-  for name, function in all_commands.iteritems():
+  for name, function in all_commands.items():
     epilog += '  %-12s - %s\n' % (name, function.__doc__)
 
   parser = argparse.ArgumentParser(prog='webports', description=__doc__,

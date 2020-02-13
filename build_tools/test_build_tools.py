@@ -4,7 +4,7 @@
 
 import mock
 from mock import Mock, patch
-import StringIO
+import io
 import unittest
 
 import webports
@@ -24,12 +24,12 @@ def mock_file_object(contents):
 
 class TestPatchConfigure(unittest.TestCase):
 
-  @patch('sys.stderr', new_callable=StringIO.StringIO)
+  @patch('sys.stderr', new_callable=io.StringIO)
   def test_missing_file(self, stderr):
     rtn = patch_configure.main(['non-existent/configure-script'])
     self.assertEqual(rtn, 1)
     expected = '^configure script not found: non-existent/configure-script$'
-    self.assertRegexpMatches(stderr.getvalue(), expected)
+    self.assertRegex(stderr.getvalue(), expected)
 
 
 class TestScanPackages(unittest.TestCase):

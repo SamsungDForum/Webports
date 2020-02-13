@@ -77,16 +77,16 @@ def get_age(version, revision):
 def build_repo(version, revision):
   age = get_age(version, revision)
   if age is None:
-    print 'Skipping %s/%s as it is a bad version' % (version, revision)
+    print('Skipping %s/%s as it is a bad version' % (version, revision))
     return
   if age < AGE_LIMIT:
-    print 'Skipping %s/%s as it is only %.1f hours old' % (version, revision,
-                                                           age / 60 / 60)
+    print('Skipping %s/%s as it is only %.1f hours old' % (version, revision,
+                                                           age / 60 / 60))
     return
   env = os.environ.copy()
   env['SDK_VERSION'] = version
   cmd = ['bash', os.path.join(SCRIPT_DIR, 'build_repo.sh'), '-r', revision]
-  print 'Building %s/%s...' % (version, revision)
+  print('Building %s/%s...' % (version, revision))
   subprocess.check_call(cmd, env=env)
 
 

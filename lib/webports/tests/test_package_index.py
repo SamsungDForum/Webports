@@ -55,7 +55,7 @@ class TestPackageIndex(common.NaclportsTest):
   def test_parsing_invalid(self):
     contents = 'FOO=bar\nBAR=baz\n'
     expected_error = "Invalid key 'FOO' in info file dummy_file:1"
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       package_index.PackageIndex('dummy_file', contents)
 
   def test_parsing_valid(self):

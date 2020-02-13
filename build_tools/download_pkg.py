@@ -8,7 +8,7 @@ This script is intended to be run periodically and is called
 by build_repo.sh script to build repository.
 """
 
-from __future__ import print_function
+
 
 import argparse
 import os

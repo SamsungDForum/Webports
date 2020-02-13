@@ -9,7 +9,7 @@ Native Client executables simple by generating boilerplate .html and .js
 files for a given Native Client module (.nmf).
 """
 
-from __future__ import print_function
+
 
 import argparse
 import logging

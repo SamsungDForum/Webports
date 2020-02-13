@@ -50,7 +50,7 @@ class TestConfiguration(common.NaclportsTest):
   def test_config_string_form(self):
     config = Configuration('arm', 'glibc', True)
     self.assertEqual(str(config), 'arm/glibc/debug')
-    self.assertRegexpMatches(repr(config), '<Configuration .*>')
+    self.assertRegex(repr(config), '<Configuration .*>')
 
   def test_config_equality(self):
     config1 = Configuration('arm', 'glibc', True)
@@ -61,5 +61,5 @@ class TestConfiguration(common.NaclportsTest):
 
   def test_invalid_arch(self):
     expected_error = 'Invalid arch: not_arch'
-    with self.assertRaisesRegexp(error.Error, expected_error):
+    with self.assertRaisesRegex(error.Error, expected_error):
       Configuration('not_arch')
