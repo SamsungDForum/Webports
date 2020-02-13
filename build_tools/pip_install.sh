@@ -24,14 +24,12 @@ if [ ! -f "$pip_bin" ]; then
   # Use local file rather than pipeline so we can detect failure of the curl
   # command.
   curl --silent --show-error https://bootstrap.pypa.io/get-pip.py > get-pip.py
-  python get-pip.py --force-reinstall --user
+  python3 get-pip.py --force-reinstall --user
   rm -f get-pip.py
   hash -r
 fi
 
 set -x
-# Pin locally install pip to a specific version
-pip install --user "pip==20.0.2"
 
 # At this point we know we have good pip install in $PATH and we can use
 # it to install the requirements.

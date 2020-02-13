@@ -19,4 +19,4 @@ if [ ! -d "${PYTHONUSERBASE}" ]; then
   exit 1
 fi
 
-exec python $*
+exec python3 $*

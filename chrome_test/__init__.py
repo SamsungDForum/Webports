@@ -14,9 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-import urllib.request, urllib.parse, urllib.error
 import urllib.request, urllib.error, urllib.parse
-import urllib.parse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)

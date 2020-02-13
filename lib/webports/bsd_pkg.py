@@ -95,7 +95,7 @@ def add_files_in_dir(content_dir, tar, prefix):
       # Rather convoluted way to add files to a tar archive that are
       # abolute (i.e. start with /).  pkg requires this, but python's
       # tar.py calls lstrip('/') on arcname in the tar.add() method.
-      with open(fullname, 'r') as f:
+      with open(fullname, 'rb') as f:
         info = tar.gettarinfo(fileobj=f)
         info.name = arcname
         # TODO(sbc): These extensions should probably be stripped out earlier

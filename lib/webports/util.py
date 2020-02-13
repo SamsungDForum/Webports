@@ -50,8 +50,8 @@ LOG_INFO = 2
 LOG_VERBOSE = 3
 LOG_TRACE = 4
 
-ELF_MAGIC = '\x7fELF'
-PEXE_MAGIC = 'PEXE'
+ELF_MAGIC = b'\x7fELF'
+PEXE_MAGIC = b'PEXE'
 
 log_level = LOG_INFO
 color_mode = 'auto'
@@ -74,7 +74,7 @@ def check_stdout_for_color_support():
 def is_elf_file(filename):
   if os.path.islink(filename):
     return False
-  with open(filename) as f:
+  with open(filename, 'rb') as f:
     header = f.read(4)
   return header == ELF_MAGIC
 
@@ -82,7 +82,7 @@ def is_elf_file(filename):
 def is_pexe_file(filename):
   if os.path.islink(filename):
     return False
-  with open(filename) as f:
+  with open(filename, 'rb') as f:
     header = f.read(4)
   return header == PEXE_MAGIC
 
@@ -359,7 +359,7 @@ def get_platform():
       raise Error("Unknown platform: %s" % sys.platform)
 
   getos = os.path.join(get_sdk_root(), 'tools', 'getos.py')
-  platform = subprocess.check_output([getos]).strip()
+  platform = subprocess.check_output([getos]).decode().strip()
   return platform
 
 
@@ -467,7 +467,7 @@ def hash_file(filename):
   """Return the SHA1 (in hex format) of the contents of the given file."""
   block_size = 100 * 1024
   sha1 = hashlib.sha1()
-  with open(filename) as f:
+  with open(filename, 'rb') as f:
     while True:
       data = f.read(block_size)
       if not data:

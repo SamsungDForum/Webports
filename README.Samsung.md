@@ -13,7 +13,7 @@ $ ./build_tools/pip_install.sh
 
 2. Sync dependencies:
 
-$ python samsung_webports_deps.py
+$ python3 samsung_webports_deps.py
 
 3. If you are using pepper_63 toolchain you need to build gtest, because it
 is required by some webports and it is not bundled with this toolchain
@@ -28,5 +28,5 @@ in [README.md](./README.md)
 1. After performing these steps please don't run gclient sync as described
 in [How to Checkout chapter of README.md]
 
-2. Currently webports require python2. Migration to python3 is in
-progress :(
+2. Our webports fork has been migrated to support python3 :)
+

@@ -97,8 +97,22 @@ def relocate_file(filename, dest):
   filename = os.path.join(dest, filename)
 
   if modify:
-    with open(filename) as f:
-      data = f.read()
+    with open(filename, 'rb') as f:
+      data_bytes = f.read()
+
+    data_decoded = False
+    encodings = [ 'utf-8', 'ascii', 'latin_1' ]
+    for e in encodings:
+      try:
+        data = data_bytes.decode(e)
+      except:
+        pass
+      else:
+        data_decoded = True
+        break
+    if not data_decoded:
+      raise UnicodeDecodeError('Can\'t decode file: {}'.format(filename))
+
     mode = os.stat(filename).st_mode
     os.chmod(filename, 0o777)
     with open(filename, 'r+') as f:
@@ -158,7 +172,7 @@ class BinaryPackage(package.Package):
       for member in tar:
         if member.name != 'pkg_info':
           raise error.PkgFormatError('pkg_info not first member in archive')
-        return tar.extractfile(member).read()
+        return tar.extractfile(member).read().decode()
 
   def install(self, force):
     """Install binary package into toolchain directory."""

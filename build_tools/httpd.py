@@ -10,7 +10,6 @@ This is intended to be used for testing.
 import http.server
 import logging
 import os
-import http.server
 import socketserver
 import sys
 import urllib.parse
