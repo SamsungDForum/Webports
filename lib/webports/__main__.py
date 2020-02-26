@@ -313,7 +313,11 @@ def run_main(args):
   if args.skip_sdk_version_check:
     util.MIN_SDK_VERSION = -1
 
-  util.current_toolchain = args.toolchain
+  if args.toolchain is not None:
+    util.current_toolchain = args.toolchain
+  else:
+    util.current_toolchain = os.environ['TOOLCHAIN']
+
   util.check_sdk_root()
   config = configuration.Configuration(args.arch, args.toolchain, args.debug)
   util.color_mode = args.color
