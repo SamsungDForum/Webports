@@ -18,13 +18,23 @@ pip_bin_dir=$PYTHONUSERBASE/bin
 pip_bin=$pip_bin_dir/pip
 export PATH=$pip_bin_dir:$PATH
 
+OSNAME="$(uname -s)"
+case "$OSNAME" in
+  MINGW*)
+    export PYTHON_CMD=python
+    ;;
+  *)
+    export PYTHON_CMD=python3
+    ;;
+esac
+
 if [ ! -f "$pip_bin" ]; then
   # On first run install pip directly from the network
   echo "Installing pip.."
   # Use local file rather than pipeline so we can detect failure of the curl
   # command.
   curl --silent --show-error https://bootstrap.pypa.io/get-pip.py > get-pip.py
-  python3 get-pip.py --force-reinstall --user
+  ${PYTHON_CMD} get-pip.py --force-reinstall --user
   rm -f get-pip.py
   hash -r
 fi

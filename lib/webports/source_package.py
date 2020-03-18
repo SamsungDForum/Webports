@@ -6,6 +6,7 @@ import contextlib
 import fnmatch
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -69,15 +70,8 @@ def format_time_delta(delta):
 
 
 def extract_archive(archive, destination):
-  ext = os.path.splitext(archive)[1]
-  if ext in ('.gz', '.tgz', '.bz2', '.xz'):
-    cmd = ['tar', 'xf', archive, '-C', destination]
-  elif ext in ('.zip',):
-    cmd = ['unzip', '-q', '-d', destination, archive]
-  else:
-    raise Error('unhandled extension: %s' % ext)
-  log_verbose(cmd)
-  subprocess.check_call(cmd)
+  log_verbose('extracting archive: {} to {}'.format(archive, destination))
+  shutil.unpack_archive(archive, destination)
 
 
 def run_git_cmd(directory, cmd, error_ok=False):
@@ -378,6 +372,8 @@ class SourcePackage(package.Package):
   def run_build_sh(self):
     build_port = os.path.join(paths.TOOLS_DIR, 'build_port.sh')
     cmd = [build_port]
+    if os.name == 'nt':
+      cmd = ['bash', build_port]
 
     if self.config.toolchain == 'emscripten':
       util.setup_emscripten()
@@ -386,6 +382,16 @@ class SourcePackage(package.Package):
     env['NACL_ARCH'] = self.config.arch
     env['NACL_DEBUG'] = self.config.debug and '1' or '0'
     env['NACL_SDK_ROOT'] = util.get_sdk_root()
+
+    if os.name == 'nt' and self.config.toolchain == 'emscripten':
+      # MinGW  : C:\dir1\dir2\ -> /C/dir1/dir2/
+      # Cygwin : C:\dir1\dir2\ -> /cygdrive/c/dir1/dir2
+      def mingw_fix_path(path):
+        return '/' + path.replace(':', '').replace('\\', '/')
+
+      env['EMSCRIPTEN'] = mingw_fix_path(env['EMSCRIPTEN'])
+      env['EM_CONFIG'] = mingw_fix_path(env['EM_CONFIG'])
+
     rtn = subprocess.call(cmd, stdout=sys.stdout, stderr=sys.stderr,
                           cwd=self.root, env=env)
     if rtn != 0:
@@ -501,6 +507,8 @@ class SourcePackage(package.Package):
     if os.path.exists(self.get_patch_file()):
       log_verbose('applying patch to: %s' % src_dir)
       cmd = ['patch', '-p1', '-g0', '--no-backup-if-mismatch']
+      if os.name == 'nt':
+        cmd.append('--binary')
       with open(self.get_patch_file()) as f:
         self.run_cmd(cmd, stdin=f)
       self.run_cmd(['git', 'add', '.'])
