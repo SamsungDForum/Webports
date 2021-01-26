@@ -43,4 +43,4 @@ set -x
 
 # At this point we know we have good pip install in $PATH and we can use
 # it to install the requirements.
-pip install ${ARGS} -r requirements.txt
+pip3 install ${ARGS} -r requirements.txt
