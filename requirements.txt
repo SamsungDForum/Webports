@@ -7,3 +7,5 @@ pylint==1.4.4
 rednose==0.4.1
 termcolor==1.1.0
 yapf==0.6.2
+checksumdir==1.1.7
+portalocker==1.5.2

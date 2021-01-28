@@ -2,12 +2,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import fcntl
 import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import portalocker
 from functools import reduce
 
 # Allow use of this module even if termcolor is missing.  There are many
@@ -270,7 +270,7 @@ def setup_emscripten():
       raise error.Error(
           'node not found in path and default path not found: %s' % node_bin)
 
-    os.environ['PATH'] += ':' + node_bin
+    os.environ['PATH'] += os.pathsep + node_bin
     find_in_path('node')
 
 
@@ -530,14 +530,14 @@ class DirLock(object):
 
   def __enter__(self):
     try:
-      fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      portalocker.lock(self.fd, portalocker.LOCK_EX | portalocker.LOCK_NB)
     except Exception:
       raise error.Error("Unable to acquire lock (%s): Is webports already "
                         "running?" % self.file_name)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    os.remove(self.file_name)
     self.fd.close()
+    os.remove(self.file_name)
 
 
 class BuildLock(DirLock):
